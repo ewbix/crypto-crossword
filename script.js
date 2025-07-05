@@ -7,6 +7,7 @@ let isSetupMode = false; // Track current mode - default to game mode
 
 // DOM elements - will be initialized when DOM is ready
 let gridElement, acrossCluesList, downCluesList, connectionDot, clientCountElement;
+let activeClueDisplay, activeClueNumber, activeClueText;
 
 // Client tracking - use localStorage to persist across page reloads
 let clientId = localStorage.getItem('clientId');
@@ -20,6 +21,11 @@ let activeWordCells = [];
 let currentClueDirection = null;
 let currentClueNumber = null;
 let clueTypingPosition = 0;
+
+// Double-tap detection for switching between across/down
+let lastFocusedCell = null;
+let lastFocusTime = 0;
+const DOUBLE_TAP_DELAY = 500; // milliseconds
 
 // Initialize HTTP polling
 async function initializePolling() {
@@ -231,6 +237,7 @@ function createGrid() {
             // Add event listeners
             cell.addEventListener('input', handleCellInput);
             cell.addEventListener('focus', handleCellFocus);
+            cell.addEventListener('click', handleCellTap);
             cell.addEventListener('keydown', handleKeyDown);
             cell.addEventListener('keyup', handleCellKeyUp);
             cellContainer.addEventListener('contextmenu', handleRightClick);
@@ -279,6 +286,12 @@ function handleCellKeyUp(e) {
     const col = parseInt(cell.dataset.col);
     const cellKey = `${row}-${col}`;
     const value = cell.value;
+    
+    // Only process if this is from actual typing (not from focus/programmatic changes)
+    if (e.key === undefined && e.code === undefined) {
+        console.log('Ignoring programmatic input event');
+        return;
+    }
     
     // Clear any existing timeout for this cell
     if (inputTimeouts.has(cellKey)) {
@@ -409,6 +422,7 @@ function processCellInput(cell, row, col) {
         if (/^[A-Za-z]$/.test(value)) {
             console.log('Game mode: processing letter:', value);
             const upperValue = value.toUpperCase();
+            const oldValue = cell.value;
             cell.value = upperValue;
             
             const cellData = {
@@ -423,8 +437,10 @@ function processCellInput(cell, row, col) {
                 value: cellData
             });
             
-            // Move to next cell if letter was entered
-            moveToNextCell(row, col);
+            // Only move to next cell if this was a new letter entry (not just processing existing value)
+            if (oldValue !== upperValue) {
+                moveToNextCell(row, col);
+            }
             return;
         }
     }
@@ -439,6 +455,46 @@ function processCellInput(cell, row, col) {
 // Handle cell focus
 function handleCellFocus(e) {
     currentCell = e.target;
+    
+    // Only implement reverse context-awareness if we're not currently editing a clue
+    // AND if this focus wasn't triggered by our own focus management
+    const isEditingClue = document.activeElement && 
+          (document.activeElement.classList.contains('clue-input') || 
+           document.activeElement.classList.contains('clue-number-input'));
+    
+    if (!isEditingClue) {
+        // Implement reverse context-awareness: grid cell -> clue
+        const row = parseInt(e.target.dataset.row);
+        const col = parseInt(e.target.dataset.col);
+        handleGridToClueContext(row, col, false);
+    }
+}
+
+// Handle cell tap/click for double-tap detection
+function handleCellTap(e) {
+    // Skip if in setup mode (handled by other functions)
+    if (isSetupMode) return;
+    
+    const row = parseInt(e.target.dataset.row);
+    const col = parseInt(e.target.dataset.col);
+    const cellKey = `${row}-${col}`;
+    
+    // Check for double-tap
+    const currentTime = Date.now();
+    const isDoubleTap = (lastFocusedCell === cellKey && 
+                       currentTime - lastFocusTime < DOUBLE_TAP_DELAY);
+    
+    console.log(`Cell tap: ${cellKey}, last: ${lastFocusedCell}, time diff: ${currentTime - lastFocusTime}, double-tap: ${isDoubleTap}`);
+    
+    // Update tracking variables
+    lastFocusedCell = cellKey;
+    lastFocusTime = currentTime;
+    
+    // Handle context with double-tap detection
+    handleGridToClueContext(row, col, isDoubleTap);
+    
+    // Focus the cell to ensure it becomes the current cell
+    e.target.focus();
 }
 
 // Handle keyboard navigation
@@ -466,12 +522,10 @@ function handleKeyDown(e) {
             moveTo(row, col + 1);
             break;
         case 'Backspace':
-            if (!currentCell.value) {
-                e.preventDefault();
-                moveToPreviousCell(row, col);
-            } else {
-                // Clear the cell and sync the deletion
-                e.preventDefault();
+            e.preventDefault();
+            
+            // Clear the current cell if it has content
+            if (currentCell.value && currentCell.value.trim() !== '') {
                 currentCell.value = '';
                 
                 // Send the deletion to server
@@ -487,10 +541,10 @@ function handleKeyDown(e) {
                     key: `${row}-${col}`,
                     value: cellData
                 });
-                
-                // Move to previous cell after deletion
-                moveToPreviousCell(row, col);
             }
+            
+            // Always move to previous cell after backspace
+            moveToPreviousCell(row, col);
             break;
     }
 }
@@ -605,8 +659,24 @@ function moveTo(row, col) {
     }
 }
 
-// Move to next cell (right, then down)
+// Move to next cell (direction-aware based on current highlighting)
 function moveToNextCell(row, col) {
+    // If we have an active word highlighted, move according to its direction
+    if (currentClueDirection && activeWordCells.length > 0) {
+        // Find current position in the active word
+        const currentIndex = activeWordCells.findIndex(cell => 
+            cell.row === row && cell.col === col
+        );
+        
+        if (currentIndex !== -1 && currentIndex + 1 < activeWordCells.length) {
+            // Move to next cell in the highlighted word
+            const nextCell = activeWordCells[currentIndex + 1];
+            moveTo(nextCell.row, nextCell.col);
+            return;
+        }
+    }
+    
+    // Fallback to default behavior (right, then down) if no active word
     if (col + 1 < GRID_SIZE) {
         moveTo(row, col + 1);
     } else if (row + 1 < GRID_SIZE) {
@@ -614,8 +684,24 @@ function moveToNextCell(row, col) {
     }
 }
 
-// Move to previous cell (left, then up)
+// Move to previous cell (direction-aware based on current highlighting)
 function moveToPreviousCell(row, col) {
+    // If we have an active word highlighted, move according to its direction
+    if (currentClueDirection && activeWordCells.length > 0) {
+        // Find current position in the active word
+        const currentIndex = activeWordCells.findIndex(cell => 
+            cell.row === row && cell.col === col
+        );
+        
+        if (currentIndex !== -1 && currentIndex - 1 >= 0) {
+            // Move to previous cell in the highlighted word
+            const prevCell = activeWordCells[currentIndex - 1];
+            moveTo(prevCell.row, prevCell.col);
+            return;
+        }
+    }
+    
+    // Fallback to default behavior (left, then up) if no active word
     if (col - 1 >= 0) {
         moveTo(row, col - 1);
     } else if (row - 1 >= 0) {
@@ -695,14 +781,57 @@ function addClueToDisplay(direction, number, text) {
     // Clue input handlers
     clueInput.addEventListener('focus', () => {
         const currentNumber = numberInput.value;
-        highlightWord(direction, currentNumber);
+        
+        if (isSetupMode) {
+            // In setup mode, just show the clue display, don't highlight grid or focus cells
+            showActiveClue(direction, currentNumber);
+        } else {
+            // In game mode, highlight the word and focus first empty cell
+            // Highlight immediately for better responsiveness
+            highlightWord(direction, currentNumber);
+        }
     });
     
-    clueInput.addEventListener('blur', () => {
-        clearWordHighlight();
+    clueInput.addEventListener('blur', (e) => {
+        // In setup mode, be more permissive about keeping focus on clues
+        // In game mode, only clear if focus moves completely away from grid and clues
+        setTimeout(() => {
+            const activeElement = document.activeElement;
+            
+            if (isSetupMode) {
+                // Setup mode: only clear if moving outside clue system
+                const isStillInClues = activeElement && (
+                    activeElement.classList.contains('clue-input') ||
+                    activeElement.classList.contains('clue-number-input') ||
+                    activeElement.closest('.clues-container')
+                );
+                
+                if (!isStillInClues) {
+                    clearWordHighlight();
+                }
+            } else {
+                // Game mode: keep highlighting if moving to grid or staying in clues
+                const isStillInClues = activeElement && (
+                    activeElement.classList.contains('clue-input') ||
+                    activeElement.classList.contains('clue-number-input') ||
+                    activeElement.closest('.clues-container')
+                );
+                
+                const isInGrid = activeElement && activeElement.classList.contains('grid-cell');
+                
+                if (!isStillInClues && !isInGrid) {
+                    clearWordHighlight();
+                }
+            }
+        }, 100);
     });
     
     clueInput.addEventListener('input', (e) => {
+        // Update active clue display immediately
+        if (activeClueText && currentClueDirection === direction && currentClueNumber == numberInput.value) {
+            activeClueText.textContent = e.target.value || '(no clue entered)';
+        }
+        
         // Debounce clue updates to reduce server spam
         clearTimeout(clueInput.debounceTimeout);
         clueInput.debounceTimeout = setTimeout(() => {
@@ -936,7 +1065,46 @@ function highlightWord(direction, number) {
         cell.container.classList.add('word-highlight');
     });
     
+    // Show the active clue below the grid
+    showActiveClue(direction, number);
+    
+    // In game mode, focus the first empty cell for answering
+    if (!isSetupMode) {
+        focusFirstEmptyCell(wordCells);
+    }
+    
     console.log(`Highlighted ${direction} word ${number}:`, wordCells.length, 'cells');
+}
+
+// Focus the first empty cell in a word
+function focusFirstEmptyCell(wordCells) {
+    // Add a small delay to allow manual cell clicks to take precedence
+    setTimeout(() => {
+        // Only auto-focus if no grid cell is currently focused
+        const currentFocus = document.activeElement;
+        const isGridCellFocused = currentFocus && currentFocus.classList.contains('grid-cell');
+        
+        if (isGridCellFocused) {
+            // User manually selected a cell, don't override their choice
+            return;
+        }
+        
+        for (const cellInfo of wordCells) {
+            const cell = document.getElementById(`cell-${cellInfo.row}-${cellInfo.col}`);
+            if (cell && (!cell.value || cell.value.trim() === '')) {
+                cell.focus();
+                return;
+            }
+        }
+        
+        // If no empty cells, focus the first cell
+        if (wordCells.length > 0) {
+            const firstCell = document.getElementById(`cell-${wordCells[0].row}-${wordCells[0].col}`);
+            if (firstCell) {
+                firstCell.focus();
+            }
+        }
+    }, 100);
 }
 
 // Clear word highlighting
@@ -948,6 +1116,117 @@ function clearWordHighlight() {
     currentClueDirection = null;
     currentClueNumber = null;
     clueTypingPosition = 0;
+    
+    // Hide the active clue display
+    if (activeClueDisplay) {
+        activeClueDisplay.style.display = 'none';
+    }
+}
+
+// Show active clue below grid
+function showActiveClue(direction, number) {
+    if (!activeClueDisplay) return;
+    
+    // Find the clue text
+    const clueItem = document.querySelector(`[data-direction="${direction}"][data-number="${number}"]`);
+    let clueText = '';
+    
+    if (clueItem) {
+        const clueInput = clueItem.querySelector('.clue-input');
+        clueText = clueInput ? clueInput.value : '';
+    }
+    
+    // Update the display
+    activeClueNumber.textContent = `${number} ${direction.toUpperCase()}`;
+    activeClueText.textContent = clueText || '(no clue entered)';
+    activeClueDisplay.style.display = 'block';
+    
+    // Scroll to ensure visibility
+    activeClueDisplay.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Handle grid cell focus to show corresponding clue (reverse context-awareness)
+function handleGridToClueContext(row, col, isDoubleTap = false) {
+    // In setup mode, don't be as aggressive with grid-to-clue context
+    if (isSetupMode) {
+        return; // Let setup mode focus on clue editing
+    }
+    
+    console.log(`handleGridToClueContext: ${row},${col}, double-tap: ${isDoubleTap}, current: ${currentClueDirection} ${currentClueNumber}`);
+    
+    // Find the across and down clues that intersect at this cell
+    let acrossClueNumber = null;
+    let downClueNumber = null;
+    
+    // Find across clue (go left to find start)
+    for (let c = col; c >= 0; c--) {
+        const container = document.getElementById(`container-${row}-${c}`);
+        if (!container || container.classList.contains('black')) break;
+        
+        const numSpan = document.getElementById(`number-${row}-${c}`);
+        if (numSpan && numSpan.textContent) {
+            // Check if this number has an across clue
+            const acrossClue = document.querySelector(`[data-direction="across"][data-number="${numSpan.textContent}"]`);
+            if (acrossClue) {
+                acrossClueNumber = numSpan.textContent;
+                break;
+            }
+        }
+    }
+    
+    // Find down clue (go up to find start)
+    for (let r = row; r >= 0; r--) {
+        const container = document.getElementById(`container-${r}-${col}`);
+        if (!container || container.classList.contains('black')) break;
+        
+        const numSpan = document.getElementById(`number-${r}-${col}`);
+        if (numSpan && numSpan.textContent) {
+            // Check if this number has a down clue
+            const downClue = document.querySelector(`[data-direction="down"][data-number="${numSpan.textContent}"]`);
+            if (downClue) {
+                downClueNumber = numSpan.textContent;
+                break;
+            }
+        }
+    }
+    
+    console.log(`Found intersecting clues: ${acrossClueNumber} across, ${downClueNumber} down`);
+    
+    // Handle double-tap switching between intersecting clues
+    if (isDoubleTap && acrossClueNumber && downClueNumber) {
+        // Switch to the opposite direction from current
+        if (currentClueDirection === 'across' && currentClueNumber === acrossClueNumber) {
+            console.log(`Double-tap: switching from ${acrossClueNumber} across to ${downClueNumber} down`);
+            highlightWord('down', downClueNumber);
+            // Reset double-tap detection with a future timestamp to prevent immediate re-triggering
+            lastFocusTime = Date.now() + DOUBLE_TAP_DELAY;
+        } else if (currentClueDirection === 'down' && currentClueNumber === downClueNumber) {
+            console.log(`Double-tap: switching from ${downClueNumber} down to ${acrossClueNumber} across`);
+            highlightWord('across', acrossClueNumber);
+            // Reset double-tap detection with a future timestamp to prevent immediate re-triggering
+            lastFocusTime = Date.now() + DOUBLE_TAP_DELAY;
+        } else {
+            // Default to across on first tap
+            console.log(`Double-tap: defaulting to ${acrossClueNumber} across`);
+            highlightWord('across', acrossClueNumber);
+        }
+    } else {
+        // Single click - check if we're already highlighting one of the intersecting clues
+        const alreadyHighlighting = (
+            (currentClueDirection === 'across' && currentClueNumber === acrossClueNumber) ||
+            (currentClueDirection === 'down' && currentClueNumber === downClueNumber)
+        );
+        
+        if (!alreadyHighlighting) {
+            // Not currently highlighting either intersecting clue - default to across if available
+            if (acrossClueNumber) {
+                highlightWord('across', acrossClueNumber);
+            } else if (downClueNumber) {
+                highlightWord('down', downClueNumber);
+            }
+        }
+        // If we're already highlighting one of the intersecting clues, don't change anything
+    }
 }
 
 // Handle typing in clue input to fill grid
@@ -992,6 +1271,9 @@ document.addEventListener('DOMContentLoaded', () => {
     downCluesList = document.getElementById('down-clues-list');
     connectionDot = document.getElementById('connection-dot');
     clientCountElement = document.getElementById('client-count');
+    activeClueDisplay = document.getElementById('active-clue-display');
+    activeClueNumber = document.getElementById('active-clue-number');
+    activeClueText = document.getElementById('active-clue-text');
     
     console.log('Creating grid...');
     createGrid();
