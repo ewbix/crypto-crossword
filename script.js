@@ -27,6 +27,16 @@ let lastFocusedCell = null;
 let lastFocusTime = 0;
 const DOUBLE_TAP_DELAY = 500; // milliseconds
 
+// Auto-resize textarea function
+function autoResizeTextarea(textarea) {
+    // Reset height to auto to get the correct scrollHeight
+    textarea.style.height = 'auto';
+    // Calculate single line height based on font size and line height
+    const singleLineHeight = Math.ceil(13 * 1.3) + 4; // font-size * line-height + padding
+    // Set height to scrollHeight but ensure it's at least one line
+    textarea.style.height = Math.max(textarea.scrollHeight, singleLineHeight) + 'px';
+}
+
 // Initialize HTTP polling
 async function initializePolling() {
     console.log('Initializing HTTP polling...');
@@ -733,8 +743,8 @@ function addClueToDisplay(direction, number, text) {
     
     clueItem.innerHTML = `
         <input type="number" class="clue-number-input" value="${number}" min="1" max="99" ${isSetupMode ? '' : 'readonly'}>
-        <input type="text" class="clue-input" value="${text || ''}" placeholder="Enter clue..." ${isSetupMode ? '' : 'readonly'}>
-        <button class="delete-clue-btn" ${isSetupMode ? '' : 'disabled'}>×</button>
+        <textarea class="clue-input" placeholder="Enter clue..." ${isSetupMode ? '' : 'readonly'}>${text || ''}</textarea>
+        <button class="delete-clue-btn" ${isSetupMode ? '' : 'disabled'} style="display: ${isSetupMode ? '' : 'none'}">×</button>
     `;
     
     // Add event listeners
@@ -827,6 +837,9 @@ function addClueToDisplay(direction, number, text) {
     });
     
     clueInput.addEventListener('input', (e) => {
+        // Auto-resize textarea to fit content
+        autoResizeTextarea(e.target);
+        
         // Update active clue display immediately
         if (activeClueText && currentClueDirection === direction && currentClueNumber == numberInput.value) {
             activeClueText.textContent = e.target.value || '(no clue entered)';
@@ -843,6 +856,9 @@ function addClueToDisplay(direction, number, text) {
             });
         }, 300); // Wait 300ms after user stops typing
     });
+    
+    // Initial resize for existing content
+    autoResizeTextarea(clueInput);
     
     // Length input doesn't need server sync - it's just a helper
     
@@ -868,6 +884,8 @@ function updateSingleClue(direction, number, text) {
         // Only update if the input is not currently focused (to avoid overwriting while user types)
         if (input !== document.activeElement && input.value !== text) {
             input.value = text;
+            // Auto-resize the textarea after updating content
+            autoResizeTextarea(input);
         }
     } else {
         // Only add clue if text is not empty (avoid creating empty clues from server sync)
@@ -927,6 +945,9 @@ function handleNewGame() {
 
 // Clear the local grid and clues
 function clearLocalGrid() {
+    // Clear any active highlighting and clue display
+    clearWordHighlight();
+    
     // Clear all grid cells
     for (let row = 0; row < GRID_SIZE; row++) {
         for (let col = 0; col < GRID_SIZE; col++) {
@@ -936,6 +957,7 @@ function clearLocalGrid() {
             
             if (container && cell && numberSpan) {
                 container.classList.remove('black');
+                container.classList.remove('word-highlight');
                 cell.disabled = false;
                 cell.value = '';
                 numberSpan.textContent = '';
@@ -998,11 +1020,21 @@ function updateClueButtons(disabled) {
     const deleteBtns = document.querySelectorAll('.delete-clue-btn');
     
     addBtns.forEach(btn => {
-        btn.disabled = disabled;
+        if (disabled) {
+            btn.style.display = 'none';
+        } else {
+            btn.style.display = '';
+            btn.disabled = false;
+        }
     });
     
     deleteBtns.forEach(btn => {
-        btn.disabled = disabled;
+        if (disabled) {
+            btn.style.display = 'none';
+        } else {
+            btn.style.display = '';
+            btn.disabled = false;
+        }
     });
 }
 

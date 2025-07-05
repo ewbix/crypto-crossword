@@ -234,26 +234,36 @@ body {
 }
 
 .active-clue-display {
-    background: #e3f2fd;
-    border: 1px solid #2196f3;
-    border-radius: 6px;
-    padding: 8px 12px;
+    background: #fff3cd;
+    border: 2px solid #ffc107;
+    border-radius: 8px;
+    padding: 10px 14px;
     max-width: 500px;
     width: 100%;
-    text-align: center;
     font-size: 14px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    line-height: 1.4;
+    display: table;
+    table-layout: fixed;
 }
 
 .active-clue-number {
     font-weight: bold;
-    color: #1976d2;
-    margin-right: 8px;
+    color: #8b4513;
+    white-space: nowrap;
+    display: table-cell;
+    width: 80px;
+    vertical-align: top;
+    padding-right: 8px;
 }
 
 .active-clue-text {
-    color: #333;
-    font-style: italic;
+    color: #2c1810;
+    font-weight: 500;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    display: table-cell;
+    vertical-align: top;
 }
 
 .clues-container {
@@ -310,21 +320,29 @@ body {
 
 .clue-item {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 4px;
-    padding: 2px 0;
+    padding: 1px 0;
 }
 
 .clue-number-input {
     font-weight: bold;
     color: #495057;
-    width: 30px;
+    width: 28px;
     text-align: center;
-    font-size: 11px;
-    padding: 2px 4px;
+    font-size: 13px;
+    padding: 2px 2px;
     border: 1px solid #ddd;
     border-radius: 2px;
     background: white;
+    -moz-appearance: textfield;
+}
+
+/* Remove spinner arrows */
+.clue-number-input::-webkit-outer-spin-button,
+.clue-number-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 
 .clue-number-input:focus {
@@ -333,10 +351,15 @@ body {
 }
 
 .clue-number-input:read-only {
-    background-color: #f8f9fa;
-    color: #6c757d;
+    background: transparent;
+    color: #0f172a;
     cursor: default;
-    border-color: #e9ecef;
+    border: none;
+    font-weight: 600;
+    padding: 2px 2px;
+    width: 28px;
+    text-align: center;
+    flex-shrink: 0;
 }
 
 .clue-number-input.error {
@@ -356,7 +379,15 @@ body {
     background: white;
     white-space: normal;
     word-wrap: break-word;
-    overflow-wrap: break-word;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    min-height: auto;
+    height: auto;
+    line-height: 1.3;
+    resize: none;
+    overflow-y: hidden;
+    font-family: inherit;
+    vertical-align: baseline;
 }
 
 .clue-input:focus {
@@ -364,14 +395,24 @@ body {
 }
 
 .clue-input:read-only {
-    background-color: #f8f9fa;
-    color: #6c757d;
+    background: transparent;
+    color: #1e293b;
     cursor: default;
-    border-color: #e9ecef;
+    border: none;
+    padding: 0;
+    font-weight: 400;
+    line-height: 1.3;
+    white-space: normal;
+    min-height: auto;
+    height: auto;
+    vertical-align: baseline;
 }
 
 .clue-input:read-only:focus {
-    border-color: #e9ecef;
+    background: rgba(59, 130, 246, 0.05);
+    border-radius: 4px;
+    outline: 2px solid rgba(59, 130, 246, 0.2);
+    outline-offset: -2px;
 }
 
 
@@ -426,22 +467,51 @@ body {
 /* Mobile optimizations */
 @media (max-width: 768px) {
     body {
-        padding: 5px;
-    }
-    
-    .container {
-        padding: 10px;
-        border-radius: 0;
+        padding: 0;
         margin: 0;
     }
     
+    .container {
+        padding: 8px;
+        border-radius: 0;
+        margin: 0;
+        box-shadow: none;
+    }
+    
+    /* Move connection indicator to bottom right on mobile */
+    .connection-indicator {
+        position: fixed;
+        top: auto;
+        left: auto;
+        bottom: 15px;
+        right: 15px;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 4px 8px;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        backdrop-filter: blur(10px);
+    }
+    
     h1 {
-        font-size: 1.5em;
-        margin-bottom: 15px;
+        font-size: 1.4em;
+        margin-bottom: 10px;
+        text-align: center;
+    }
+    
+    .grid-container {
+        padding: 0;
+        gap: 8px;
     }
     
     #crossword-grid {
-        max-width: min(90vw, 90vh, 400px);
+        max-width: min(calc(100vw - 16px), 100vh, 500px);
+        margin: 0;
+        border: 2px solid #333;
+    }
+    
+    .clues-container {
+        max-width: 100%;
+        padding: 0 8px;
     }
     
     .clues-header h3 {
@@ -449,6 +519,179 @@ body {
     }
     
     .clue-input {
-        font-size: 16px; /* Prevents zoom on iOS */
+        font-size: 14px; /* Smaller base size, still prevents iOS zoom */
+        min-height: 20px;
+        line-height: 1.3;
+        resize: none;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+        hyphens: auto;
+    }
+    
+    .grid-cell {
+        font-size: clamp(10px, 2.5vw, 16px);
+    }
+    
+    .cell-number {
+        font-size: clamp(6px, 1.2vw, 8px);
+    }
+    
+    .game-controls {
+        padding: 10px 8px;
+        margin-top: 15px;
+    }
+}
+
+/* iPhone specific optimizations */
+@media (max-width: 480px) {
+    .container {
+        padding: 4px;
+    }
+    
+    h1 {
+        font-size: 1.2em;
+        margin-bottom: 8px;
+    }
+    
+    .grid-container {
+        gap: 6px;
+    }
+    
+    #crossword-grid {
+        max-width: min(calc(100vw - 8px), 100vh, 500px);
+        border: 2px solid #333;
+    }
+    
+    .clues-container {
+        padding: 0 4px;
+    }
+    
+    .active-clue-display {
+        margin: 0 4px;
+        padding: 8px 12px;
+        font-size: 13px;
+        border-radius: 6px;
+    }
+    
+    .game-controls {
+        padding: 8px 4px;
+        margin-top: 10px;
+        gap: 15px;
+    }
+    
+    .mode-button {
+        padding: 6px 12px;
+        font-size: 13px;
+    }
+    
+    .new-game-button {
+        padding: 8px 16px;
+        font-size: 13px;
+    }
+    
+    .clue-input {
+        font-size: 13px;
+        min-height: 18px;
+        line-height: 1.2;
+        padding: 1px 3px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+        hyphens: auto;
+    }
+    
+    .grid-cell {
+        font-size: clamp(9px, 2.2vw, 14px);
+    }
+    
+    .cell-number {
+        font-size: clamp(5px, 1vw, 7px);
+    }
+    
+    .clues-header h3 {
+        font-size: 1em;
+    }
+}
+
+/* Very small devices (smaller than iPhone) */
+@media (max-width: 360px) {
+    .container {
+        padding: 2px;
+    }
+    
+    h1 {
+        font-size: 1.1em;
+        margin-bottom: 6px;
+    }
+    
+    .grid-container {
+        gap: 4px;
+    }
+    
+    #crossword-grid {
+        max-width: min(calc(100vw - 4px), 100vh, 500px);
+        border: 2px solid #333;
+        margin: 0;
+    }
+    
+    .clues-container {
+        padding: 0 2px;
+    }
+    
+    .active-clue-display {
+        margin: 0 2px;
+        padding: 6px 10px;
+        font-size: 12px;
+        border-radius: 6px;
+    }
+    
+    .game-controls {
+        padding: 6px 2px;
+        margin-top: 8px;
+        gap: 10px;
+    }
+    
+    .mode-button {
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+    
+    .new-game-button {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+    
+    .clue-input {
+        font-size: 12px;
+        min-height: 16px;
+        line-height: 1.1;
+        padding: 1px 2px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+        hyphens: auto;
+        max-width: 100%;
+    }
+    
+    .grid-cell {
+        font-size: clamp(8px, 2vw, 12px);
+    }
+    
+    .cell-number {
+        font-size: clamp(4px, 0.8vw, 6px);
+    }
+    
+    .clues-header h3 {
+        font-size: 0.9em;
+    }
+    
+    .clue-item {
+        align-items: flex-start;
+        min-height: auto;
+    }
+    
+    .clues-list {
+        gap: 1px;
     }
 }
