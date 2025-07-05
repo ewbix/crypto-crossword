@@ -202,6 +202,16 @@ body {
     box-shadow: none;
 }
 
+.cell-container.word-highlight {
+    background-color: #fff3cd !important;
+    box-shadow: inset 0 0 0 2px #ffc107 !important;
+}
+
+.cell-container.word-highlight.black {
+    background-color: #333 !important;
+    box-shadow: none !important;
+}
+
 .clues-container {
     width: 100%;
     max-width: 500px;
@@ -261,12 +271,28 @@ body {
     padding: 2px 0;
 }
 
-.clue-number {
+.clue-number-input {
     font-weight: bold;
     color: #495057;
-    min-width: 16px;
-    text-align: right;
+    width: 30px;
+    text-align: center;
     font-size: 11px;
+    padding: 2px 4px;
+    border: 1px solid #ddd;
+    border-radius: 2px;
+    background: white;
+}
+
+.clue-number-input:focus {
+    border-color: #2196f3;
+    outline: none;
+}
+
+.clue-number-input:read-only {
+    background-color: #f8f9fa;
+    color: #6c757d;
+    cursor: default;
+    border-color: #e9ecef;
 }
 
 .clue-input {
@@ -294,6 +320,7 @@ body {
 .clue-input:read-only:focus {
     border-color: #e9ecef;
 }
+
 
 .delete-clue-btn {
     background: none;

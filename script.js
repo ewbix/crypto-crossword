@@ -8,6 +8,12 @@ let isSetupMode = false; // Track current mode - default to game mode
 // DOM elements - will be initialized when DOM is ready
 let gridElement, acrossCluesList, downCluesList, connectionDot;
 
+// Context-aware clue editing
+let activeWordCells = [];
+let currentClueDirection = null;
+let currentClueNumber = null;
+let clueTypingPosition = 0;
+
 // Initialize HTTP polling
 async function initializePolling() {
     console.log('Initializing HTTP polling...');
@@ -614,23 +620,67 @@ function addClueToDisplay(direction, number, text) {
     clueItem.dataset.number = number;
     
     clueItem.innerHTML = `
-        <span class="clue-number">${number}</span>
+        <input type="number" class="clue-number-input" value="${number}" min="1" max="99" ${isSetupMode ? '' : 'readonly'}>
         <input type="text" class="clue-input" value="${text || ''}" placeholder="Enter clue..." ${isSetupMode ? '' : 'readonly'}>
         <button class="delete-clue-btn" ${isSetupMode ? '' : 'disabled'}>×</button>
     `;
     
     // Add event listeners
-    const input = clueItem.querySelector('.clue-input');
+    const numberInput = clueItem.querySelector('.clue-number-input');
+    const clueInput = clueItem.querySelector('.clue-input');
     const deleteBtn = clueItem.querySelector('.delete-clue-btn');
     
-    input.addEventListener('input', (e) => {
+    // Number input handler
+    numberInput.addEventListener('change', (e) => {
+        const newNumber = e.target.value;
+        if (newNumber && newNumber !== number) {
+            // Check if new number already exists
+            const existingClue = document.querySelector(`[data-direction="${direction}"][data-number="${newNumber}"]`);
+            if (existingClue && existingClue !== clueItem) {
+                alert('A clue with this number already exists!');
+                e.target.value = number; // Reset to original
+                return;
+            }
+            
+            // Update the clue item's data attribute
+            clueItem.dataset.number = newNumber;
+            
+            // Send update to server for both number change and existing text
+            sendToServer({
+                type: 'clue-delete',
+                direction: direction,
+                number: number
+            });
+            
+            sendToServer({
+                type: 'clue-update',
+                direction: direction,
+                number: newNumber,
+                text: clueInput.value
+            });
+        }
+    });
+    
+    // Clue input handlers
+    clueInput.addEventListener('focus', () => {
+        const currentNumber = numberInput.value;
+        highlightWord(direction, currentNumber);
+    });
+    
+    clueInput.addEventListener('blur', () => {
+        clearWordHighlight();
+    });
+    
+    clueInput.addEventListener('input', (e) => {
         sendToServer({
             type: 'clue-update',
             direction: direction,
-            number: number,
+            number: numberInput.value,
             text: e.target.value
         });
     });
+    
+    // Length input doesn't need server sync - it's just a helper
     
     deleteBtn.addEventListener('click', () => {
         if (isSetupMode) {
@@ -681,11 +731,14 @@ function handleAddClue(direction) {
     
     addClueToDisplay(direction, nextNumber.toString(), '');
     
-    // Focus the new input
+    // Focus the number input first so user can edit it if needed
     setTimeout(() => {
-        const newClueInput = document.querySelector(`[data-direction="${direction}"][data-number="${nextNumber}"] .clue-input`);
-        if (newClueInput) {
-            newClueInput.focus();
+        const newClueItem = document.querySelector(`[data-direction="${direction}"][data-number="${nextNumber}"]`);
+        if (newClueItem) {
+            const numberInput = newClueItem.querySelector('.clue-number-input');
+            if (numberInput) {
+                numberInput.select(); // Select the number so they can replace it easily
+            }
         }
     }, 100);
 }
@@ -761,7 +814,13 @@ function switchToGameMode() {
 // Update clue inputs based on mode
 function updateClueInputsMode(readonly) {
     const clueInputs = document.querySelectorAll('.clue-input');
+    const numberInputs = document.querySelectorAll('.clue-number-input');
+    
     clueInputs.forEach(input => {
+        input.readOnly = readonly;
+    });
+    
+    numberInputs.forEach(input => {
         input.readOnly = readonly;
     });
 }
@@ -778,6 +837,111 @@ function updateClueButtons(disabled) {
     deleteBtns.forEach(btn => {
         btn.disabled = disabled;
     });
+}
+
+// Find all cells that belong to a word starting at given position
+function findWordCells(startRow, startCol, direction) {
+    const cells = [];
+    let row = startRow;
+    let col = startCol;
+    
+    while (row >= 0 && row < GRID_SIZE && col >= 0 && col < GRID_SIZE) {
+        const container = document.getElementById(`container-${row}-${col}`);
+        if (!container || container.classList.contains('black')) {
+            break;
+        }
+        
+        cells.push({row, col, container});
+        
+        if (direction === 'across') {
+            col++;
+        } else {
+            row++;
+        }
+    }
+    
+    return cells.length > 1 ? cells : []; // Only return if it's actually a word (>1 cell)
+}
+
+// Find the starting position of a word with given number
+function findWordStart(number) {
+    for (let row = 0; row < GRID_SIZE; row++) {
+        for (let col = 0; col < GRID_SIZE; col++) {
+            const numberSpan = document.getElementById(`number-${row}-${col}`);
+            if (numberSpan && numberSpan.textContent === number.toString()) {
+                return {row, col};
+            }
+        }
+    }
+    return null;
+}
+
+// Highlight word cells
+function highlightWord(direction, number) {
+    // Clear previous highlighting
+    clearWordHighlight();
+    
+    const wordStart = findWordStart(number);
+    if (!wordStart) return;
+    
+    const wordCells = findWordCells(wordStart.row, wordStart.col, direction);
+    if (wordCells.length === 0) return;
+    
+    // Store active word info
+    activeWordCells = wordCells;
+    currentClueDirection = direction;
+    currentClueNumber = number;
+    clueTypingPosition = 0;
+    
+    // Highlight all cells in the word
+    wordCells.forEach(cell => {
+        cell.container.classList.add('word-highlight');
+    });
+    
+    console.log(`Highlighted ${direction} word ${number}:`, wordCells.length, 'cells');
+}
+
+// Clear word highlighting
+function clearWordHighlight() {
+    document.querySelectorAll('.word-highlight').forEach(container => {
+        container.classList.remove('word-highlight');
+    });
+    activeWordCells = [];
+    currentClueDirection = null;
+    currentClueNumber = null;
+    clueTypingPosition = 0;
+}
+
+// Handle typing in clue input to fill grid
+function handleClueTyping(character) {
+    if (!activeWordCells.length || clueTypingPosition >= activeWordCells.length) {
+        return;
+    }
+    
+    const cellInfo = activeWordCells[clueTypingPosition];
+    const cell = document.getElementById(`cell-${cellInfo.row}-${cellInfo.col}`);
+    
+    if (cell && /[A-Za-z]/.test(character)) {
+        const upperChar = character.toUpperCase();
+        cell.value = upperChar;
+        
+        // Send to server
+        const numberSpan = document.getElementById(`number-${cellInfo.row}-${cellInfo.col}`);
+        const cellData = {
+            value: upperChar,
+            number: numberSpan.textContent,
+            isBlack: false
+        };
+        
+        sendToServer({
+            type: 'grid-update',
+            key: `${cellInfo.row}-${cellInfo.col}`,
+            value: cellData
+        });
+        
+        clueTypingPosition++;
+        console.log(`Filled cell ${cellInfo.row},${cellInfo.col} with '${upperChar}', position now ${clueTypingPosition}`);
+    }
 }
 
 // Initialize the grid when page loads
