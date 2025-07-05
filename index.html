@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaborative Cryptic Crossword</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Collaborative Cryptic Crossword</h1>
+        
+        <div class="main-content">
+            <div class="grid-container">
+                <div id="crossword-grid"></div>
+            </div>
+            
+            <div class="clues-container">
+                <div class="clues-section">
+                    <h3>Across</h3>
+                    <textarea id="across-clues" placeholder="Enter across clues here..."></textarea>
+                </div>
+                
+                <div class="clues-section">
+                    <h3>Down</h3>
+                    <textarea id="down-clues" placeholder="Enter down clues here..."></textarea>
+                </div>
+            </div>
+        </div>
+        
+        <div class="connection-status">
+            <span id="status">Disconnected</span>
+        </div>
+    </div>
+
+    <!-- We'll use a simple custom sync solution instead of Yjs for now -->
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "name": "crypto-crossword",
+  "version": "1.0.0",
+  "description": "Collaborative cryptic crossword puzzle app",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  },
+  "keywords": ["crossword", "collaborative", "puzzle", "yjs"],
+  "author": "",
+  "license": "MIT"
+}
