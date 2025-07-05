@@ -7,13 +7,10 @@
     "start": "node server.js",
     "dev": "node server.js"
   },
-  "dependencies": {
-    "ws": "^8.14.2"
+  "engines": {
+    "node": ">=18.0.0"
   },
-  "devDependencies": {
-    "http-server": "^14.1.1"
-  },
-  "keywords": ["crossword", "collaborative", "puzzle", "yjs"],
+  "keywords": ["crossword", "collaborative", "puzzle"],
   "author": "",
   "license": "MIT"
 }

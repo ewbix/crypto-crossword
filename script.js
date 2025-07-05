@@ -9,11 +9,12 @@ let isSetupMode = true; // Track current mode
 let gridElement, acrossCluesList, downCluesList, connectionDot;
 
 // Initialize HTTP polling
-function initializePolling() {
+async function initializePolling() {
     console.log('Initializing HTTP polling...');
     
-    // Load initial state
-    loadInitialState();
+    // Load initial state and immediately check for any pending updates
+    await loadInitialState();
+    await checkForImmediateUpdates();
     
     // Start polling for updates
     startPolling();
@@ -59,6 +60,24 @@ async function loadInitialState() {
     } catch (error) {
         console.error('Failed to load initial state:', error);
         connectionDot.className = 'connection-dot';
+    }
+}
+
+// Check for any pending updates immediately after loading initial state
+async function checkForImmediateUpdates() {
+    try {
+        const response = await fetch(`/api/updates?since=${lastUpdateId}`);
+        const updates = await response.json();
+        
+        console.log('Checking for immediate updates:', updates);
+        
+        updates.forEach(update => {
+            handleServerUpdate(update.data);
+            lastUpdateId = Math.max(lastUpdateId, update.id);
+        });
+        
+    } catch (error) {
+        console.error('Failed to check immediate updates:', error);
     }
 }
 
