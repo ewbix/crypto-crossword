@@ -15,9 +15,20 @@ let gameState = {
 let updates = [];
 let updateId = 0;
 
-// Track connected clients
-let connectedClients = new Set();
+// Track connected clients with timeout cleanup
+let connectedClients = new Map(); // clientId -> lastSeen timestamp
 let clientCounter = 0;
+const CLIENT_TIMEOUT = 10000; // 10 seconds timeout
+
+// Clean up inactive clients
+function cleanupClients() {
+  const now = Date.now();
+  for (const [clientId, lastSeen] of connectedClients.entries()) {
+    if (now - lastSeen > CLIENT_TIMEOUT) {
+      connectedClients.delete(clientId);
+    }
+  }
+}
 
 // Create HTTP server
 const server = http.createServer((req, res) => {
@@ -27,8 +38,11 @@ const server = http.createServer((req, res) => {
   // Handle API endpoints
   if (pathname === '/api/state') {
     // Get current state and register client
-    const clientId = req.headers['x-client-id'] || `client-${++clientCounter}`;
-    connectedClients.add(clientId);
+    const clientId = req.headers['x-client-id'];
+    if (clientId) {
+      connectedClients.set(clientId, Date.now());
+    }
+    cleanupClients();
     
     const response = {
       ...gameState,
@@ -53,7 +67,12 @@ const server = http.createServer((req, res) => {
         if (data.type === 'grid-update') {
           gameState.grid[data.key] = data.value;
         } else if (data.type === 'clue-update') {
-          gameState.clues[data.direction][data.number] = data.text;
+          if (data.text && data.text.trim() !== '') {
+            gameState.clues[data.direction][data.number] = data.text;
+          } else {
+            // If text is empty, delete the clue instead
+            delete gameState.clues[data.direction][data.number];
+          }
         } else if (data.type === 'clue-delete') {
           delete gameState.clues[data.direction][data.number];
         } else if (data.type === 'clear-all') {
@@ -87,8 +106,11 @@ const server = http.createServer((req, res) => {
   
   if (pathname === '/api/updates') {
     // Get updates since last check and register client
-    const clientId = req.headers['x-client-id'] || `client-${++clientCounter}`;
-    connectedClients.add(clientId);
+    const clientId = req.headers['x-client-id'];
+    if (clientId) {
+      connectedClients.set(clientId, Date.now());
+    }
+    cleanupClients();
     
     const since = parseInt(parsedUrl.query.since || '0');
     const newUpdates = updates.filter(update => update.id > since);

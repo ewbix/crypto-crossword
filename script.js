@@ -8,8 +8,12 @@ let isSetupMode = false; // Track current mode - default to game mode
 // DOM elements - will be initialized when DOM is ready
 let gridElement, acrossCluesList, downCluesList, connectionDot, clientCountElement;
 
-// Client tracking
-let clientId = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+// Client tracking - use localStorage to persist across page reloads
+let clientId = localStorage.getItem('clientId');
+if (!clientId) {
+    clientId = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    localStorage.setItem('clientId', clientId);
+}
 
 // Context-aware clue editing
 let activeWordCells = [];
@@ -699,12 +703,16 @@ function addClueToDisplay(direction, number, text) {
     });
     
     clueInput.addEventListener('input', (e) => {
-        sendToServer({
-            type: 'clue-update',
-            direction: direction,
-            number: numberInput.value,
-            text: e.target.value
-        });
+        // Debounce clue updates to reduce server spam
+        clearTimeout(clueInput.debounceTimeout);
+        clueInput.debounceTimeout = setTimeout(() => {
+            sendToServer({
+                type: 'clue-update',
+                direction: direction,
+                number: numberInput.value,
+                text: e.target.value
+            });
+        }, 300); // Wait 300ms after user stops typing
     });
     
     // Length input doesn't need server sync - it's just a helper
@@ -728,12 +736,15 @@ function updateSingleClue(direction, number, text) {
     const clueItem = document.querySelector(`[data-direction="${direction}"][data-number="${number}"]`);
     if (clueItem) {
         const input = clueItem.querySelector('.clue-input');
-        if (input.value !== text) {
+        // Only update if the input is not currently focused (to avoid overwriting while user types)
+        if (input !== document.activeElement && input.value !== text) {
             input.value = text;
         }
     } else {
-        // Clue doesn't exist, add it
-        addClueToDisplay(direction, number, text);
+        // Only add clue if text is not empty (avoid creating empty clues from server sync)
+        if (text && text.trim() !== '') {
+            addClueToDisplay(direction, number, text);
+        }
     }
 }
 
