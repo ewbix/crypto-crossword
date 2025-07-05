@@ -8,7 +8,7 @@ const port = 3000;
 // Store the current state
 let gameState = {
   grid: {},
-  clues: { across: '', down: '' }
+  clues: { across: {}, down: {} }
 };
 
 // Store updates for polling
@@ -41,7 +41,14 @@ const server = http.createServer((req, res) => {
         if (data.type === 'grid-update') {
           gameState.grid[data.key] = data.value;
         } else if (data.type === 'clue-update') {
-          gameState.clues[data.clueType] = data.value;
+          gameState.clues[data.direction][data.number] = data.text;
+        } else if (data.type === 'clue-delete') {
+          delete gameState.clues[data.direction][data.number];
+        } else if (data.type === 'clear-all') {
+          // Clear everything
+          gameState.grid = {};
+          gameState.clues = { across: {}, down: {} };
+          console.log('Game cleared by user request');
         }
         
         // Add to updates list

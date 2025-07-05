@@ -7,9 +7,9 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <div class="connection-dot" id="connection-dot"></div>
+    
     <div class="container">
-        <h1>Collaborative Cryptic Crossword</h1>
-        
         <div class="main-content">
             <div class="grid-container">
                 <div id="crossword-grid"></div>
@@ -17,19 +17,29 @@
             
             <div class="clues-container">
                 <div class="clues-section">
-                    <h3>Across</h3>
-                    <textarea id="across-clues" placeholder="Enter across clues here..."></textarea>
+                    <div class="clues-header">
+                        <h3>Across</h3>
+                        <button class="add-clue-btn" data-direction="across">+ Add Clue</button>
+                    </div>
+                    <div id="across-clues-list" class="clues-list"></div>
                 </div>
                 
                 <div class="clues-section">
-                    <h3>Down</h3>
-                    <textarea id="down-clues" placeholder="Enter down clues here..."></textarea>
+                    <div class="clues-header">
+                        <h3>Down</h3>
+                        <button class="add-clue-btn" data-direction="down">+ Add Clue</button>
+                    </div>
+                    <div id="down-clues-list" class="clues-list"></div>
                 </div>
             </div>
         </div>
         
-        <div class="connection-status">
-            <span id="status">Disconnected</span>
+        <div class="game-controls">
+            <div class="mode-toggle">
+                <button id="setup-mode-btn" class="mode-button active">Setup Mode</button>
+                <button id="game-mode-btn" class="mode-button">Game Mode</button>
+            </div>
+            <button id="new-game-btn" class="new-game-button">New Game</button>
         </div>
     </div>
 
