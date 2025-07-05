@@ -3,7 +3,7 @@ const GRID_SIZE = 15;
 let currentCell = null;
 let lastUpdateId = 0;
 let inputTimeouts = new Map(); // Store timeouts for each cell
-let isSetupMode = true; // Track current mode
+let isSetupMode = false; // Track current mode - default to game mode
 
 // DOM elements - will be initialized when DOM is ready
 let gridElement, acrossCluesList, downCluesList, connectionDot;
@@ -214,10 +214,27 @@ function handleCellInput(e) {
     const cell = e.target;
     let value = cell.value;
     
-    // Only allow letters and numbers, max 2 characters
+    // Only allow letters and numbers
     value = value.replace(/[^A-Za-z0-9]/g, '');
-    if (value.length > 2) {
-        value = value.slice(0, 2);
+    
+    // In game mode, only allow single letters (immediate replacement)
+    if (!isSetupMode) {
+        if (value.length > 1 && /[A-Za-z]/.test(value)) {
+            // Keep only the last letter typed
+            const lastChar = value[value.length - 1];
+            if (/[A-Za-z]/.test(lastChar)) {
+                value = lastChar;
+            } else {
+                value = '';
+            }
+        } else if (value.length > 1) {
+            value = value.slice(0, 1);
+        }
+    } else {
+        // Setup mode: max 2 characters for number+letter combinations
+        if (value.length > 2) {
+            value = value.slice(0, 2);
+        }
     }
     
     cell.value = value;
@@ -236,9 +253,9 @@ function handleCellKeyUp(e) {
         clearTimeout(inputTimeouts.get(cellKey));
     }
     
-    // If it's just a single letter in setup mode, process immediately (no delay)
-    if (isSetupMode && /^[A-Za-z]$/.test(value)) {
-        console.log('Setup mode: immediate letter processing:', value);
+    // If it's just a single letter, process immediately (no delay) in both modes
+    if (/^[A-Za-z]$/.test(value)) {
+        console.log('Immediate letter processing:', value, 'Mode:', isSetupMode ? 'Setup' : 'Game');
         processCellInput(cell, row, col);
         return;
     }
@@ -793,6 +810,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const gameModeBtn = document.getElementById('game-mode-btn');
     setupModeBtn.addEventListener('click', switchToSetupMode);
     gameModeBtn.addEventListener('click', switchToGameMode);
+    
+    // Initialize with game mode (default)
+    updateClueInputsMode(true); // readonly for game mode
+    updateClueButtons(true); // disabled for game mode
     
     // Initialize HTTP polling
     initializePolling();
