@@ -6,7 +6,10 @@ let inputTimeouts = new Map(); // Store timeouts for each cell
 let isSetupMode = false; // Track current mode - default to game mode
 
 // DOM elements - will be initialized when DOM is ready
-let gridElement, acrossCluesList, downCluesList, connectionDot;
+let gridElement, acrossCluesList, downCluesList, connectionDot, clientCountElement;
+
+// Client tracking
+let clientId = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 // Context-aware clue editing
 let activeWordCells = [];
@@ -31,7 +34,9 @@ async function initializePolling() {
 // Load initial state from server
 async function loadInitialState() {
     try {
-        const response = await fetch('/api/state');
+        const response = await fetch('/api/state', {
+            headers: { 'X-Client-ID': clientId }
+        });
         const gameState = await response.json();
         
         console.log('Loaded initial state:', gameState);
@@ -63,6 +68,11 @@ async function loadInitialState() {
         updateCluesDisplay('across', gameState.clues.across || {});
         updateCluesDisplay('down', gameState.clues.down || {});
         
+        // Update client count
+        if (gameState.clientCount) {
+            clientCountElement.textContent = gameState.clientCount;
+        }
+        
     } catch (error) {
         console.error('Failed to load initial state:', error);
         connectionDot.className = 'connection-dot';
@@ -72,14 +82,20 @@ async function loadInitialState() {
 // Check for any pending updates immediately after loading initial state
 async function checkForImmediateUpdates() {
     try {
-        const response = await fetch(`/api/updates?since=${lastUpdateId}`);
+        const response = await fetch(`/api/updates?since=${lastUpdateId}`, {
+            headers: { 'X-Client-ID': clientId }
+        });
         const updates = await response.json();
         
         console.log('Checking for immediate updates:', updates);
         
         updates.forEach(update => {
-            handleServerUpdate(update.data);
-            lastUpdateId = Math.max(lastUpdateId, update.id);
+            if (update.type === 'client-count') {
+                clientCountElement.textContent = update.clientCount;
+            } else {
+                handleServerUpdate(update.data);
+                lastUpdateId = Math.max(lastUpdateId, update.id);
+            }
         });
         
     } catch (error) {
@@ -91,12 +107,18 @@ async function checkForImmediateUpdates() {
 function startPolling() {
     const pollForUpdates = async () => {
         try {
-            const response = await fetch(`/api/updates?since=${lastUpdateId}`);
+            const response = await fetch(`/api/updates?since=${lastUpdateId}`, {
+                headers: { 'X-Client-ID': clientId }
+            });
             const updates = await response.json();
             
             updates.forEach(update => {
-                handleServerUpdate(update.data);
-                lastUpdateId = Math.max(lastUpdateId, update.id);
+                if (update.type === 'client-count') {
+                    clientCountElement.textContent = update.clientCount;
+                } else {
+                    handleServerUpdate(update.data);
+                    lastUpdateId = Math.max(lastUpdateId, update.id);
+                }
             });
             
             connectionDot.className = 'connection-dot connected';
@@ -631,18 +653,23 @@ function addClueToDisplay(direction, number, text) {
     const deleteBtn = clueItem.querySelector('.delete-clue-btn');
     
     // Number input handler
+    numberInput.addEventListener('input', (e) => {
+        const newNumber = e.target.value;
+        
+        // Check if new number already exists (but allow it, just style it red)
+        const existingClue = document.querySelector(`[data-direction="${direction}"][data-number="${newNumber}"]`);
+        if (existingClue && existingClue !== clueItem) {
+            // Style as error but don't prevent
+            numberInput.classList.add('error');
+        } else {
+            numberInput.classList.remove('error');
+        }
+    });
+    
     numberInput.addEventListener('change', (e) => {
         const newNumber = e.target.value;
         if (newNumber && newNumber !== number) {
-            // Check if new number already exists
-            const existingClue = document.querySelector(`[data-direction="${direction}"][data-number="${newNumber}"]`);
-            if (existingClue && existingClue !== clueItem) {
-                alert('A clue with this number already exists!');
-                e.target.value = number; // Reset to original
-                return;
-            }
-            
-            // Update the clue item's data attribute
+            // Update the clue item's data attribute regardless of duplicates
             clueItem.dataset.number = newNumber;
             
             // Send update to server for both number change and existing text
@@ -953,6 +980,7 @@ document.addEventListener('DOMContentLoaded', () => {
     acrossCluesList = document.getElementById('across-clues-list');
     downCluesList = document.getElementById('down-clues-list');
     connectionDot = document.getElementById('connection-dot');
+    clientCountElement = document.getElementById('client-count');
     
     console.log('Creating grid...');
     createGrid();

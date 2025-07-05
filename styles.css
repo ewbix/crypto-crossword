@@ -11,20 +11,37 @@ body {
     margin: 0;
 }
 
-.connection-dot {
+.connection-indicator {
     position: fixed;
     top: 10px;
     left: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    z-index: 1000;
+}
+
+.connection-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
     background-color: #dc3545;
-    z-index: 1000;
     transition: background-color 0.3s ease;
 }
 
 .connection-dot.connected {
     background-color: #28a745;
+}
+
+.client-count {
+    font-size: 11px;
+    font-weight: bold;
+    color: #666;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 2px 4px;
+    border-radius: 3px;
+    min-width: 12px;
+    text-align: center;
 }
 
 .container {
@@ -295,6 +312,12 @@ body {
     border-color: #e9ecef;
 }
 
+.clue-number-input.error {
+    border-color: #dc3545 !important;
+    background-color: #f8d7da !important;
+    color: #721c24 !important;
+}
+
 .clue-input {
     flex: 1;
     padding: 2px 4px;
@@ -304,6 +327,9 @@ body {
     outline: none;
     transition: border-color 0.2s;
     background: white;
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .clue-input:focus {

@@ -15,6 +15,10 @@ let gameState = {
 let updates = [];
 let updateId = 0;
 
+// Track connected clients
+let connectedClients = new Set();
+let clientCounter = 0;
+
 // Create HTTP server
 const server = http.createServer((req, res) => {
   const parsedUrl = url.parse(req.url, true);
@@ -22,9 +26,17 @@ const server = http.createServer((req, res) => {
   
   // Handle API endpoints
   if (pathname === '/api/state') {
-    // Get current state
+    // Get current state and register client
+    const clientId = req.headers['x-client-id'] || `client-${++clientCounter}`;
+    connectedClients.add(clientId);
+    
+    const response = {
+      ...gameState,
+      clientCount: connectedClients.size
+    };
+    
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(gameState));
+    res.end(JSON.stringify(response));
     return;
   }
   
@@ -74,9 +86,24 @@ const server = http.createServer((req, res) => {
   }
   
   if (pathname === '/api/updates') {
-    // Get updates since last check
+    // Get updates since last check and register client
+    const clientId = req.headers['x-client-id'] || `client-${++clientCounter}`;
+    connectedClients.add(clientId);
+    
     const since = parseInt(parsedUrl.query.since || '0');
     const newUpdates = updates.filter(update => update.id > since);
+    
+    // Add client count update if it changed
+    const currentClientCount = connectedClients.size;
+    const lastUpdate = updates[updates.length - 1];
+    if (!lastUpdate || lastUpdate.clientCount !== currentClientCount) {
+      newUpdates.push({
+        id: -1, // Special ID for client count
+        type: 'client-count',
+        clientCount: currentClientCount,
+        timestamp: Date.now()
+      });
+    }
     
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(newUpdates));
