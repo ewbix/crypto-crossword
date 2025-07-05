@@ -233,6 +233,13 @@ function createGrid() {
             cell.dataset.col = col;
             cell.id = `cell-${row}-${col}`;
             
+            // iOS optimization attributes
+            cell.setAttribute('autocomplete', 'off');
+            cell.setAttribute('autocorrect', 'off');
+            cell.setAttribute('autocapitalize', 'off');
+            cell.setAttribute('spellcheck', 'false');
+            cell.setAttribute('inputmode', 'text');
+            
             // Create an overlay div for click handling on black cells
             const clickOverlay = document.createElement('div');
             clickOverlay.className = 'click-overlay';
@@ -250,6 +257,7 @@ function createGrid() {
             cell.addEventListener('click', handleCellTap);
             cell.addEventListener('keydown', handleKeyDown);
             cell.addEventListener('keyup', handleCellKeyUp);
+            cell.addEventListener('touchend', handleCellTap); // iOS touch support
             cellContainer.addEventListener('contextmenu', handleRightClick);
             clickOverlay.addEventListener('click', handleCellClick);
             
@@ -258,7 +266,7 @@ function createGrid() {
     }
 }
 
-// Handle cell input (simplified - just prevent invalid characters)
+// Handle cell input (optimized for iOS)
 function handleCellInput(e) {
     const cell = e.target;
     let value = cell.value;
@@ -279,6 +287,16 @@ function handleCellInput(e) {
         } else if (value.length > 1) {
             value = value.slice(0, 1);
         }
+        
+        // For iOS, immediately process single letters to avoid input lag
+        if (/^[A-Za-z]$/.test(value)) {
+            const row = parseInt(cell.dataset.row);
+            const col = parseInt(cell.dataset.col);
+            // Use a small delay to ensure the input event completes
+            setTimeout(() => {
+                processCellInput(cell, row, col);
+            }, 10);
+        }
     } else {
         // Setup mode: max 2 characters for number+letter combinations
         if (value.length > 2) {
@@ -289,7 +307,7 @@ function handleCellInput(e) {
     cell.value = value;
 }
 
-// Handle key up - this is where we process the complete input with debounce
+// Handle key up - optimized for iOS virtual keyboard
 function handleCellKeyUp(e) {
     const cell = e.target;
     const row = parseInt(cell.dataset.row);
@@ -297,29 +315,23 @@ function handleCellKeyUp(e) {
     const cellKey = `${row}-${col}`;
     const value = cell.value;
     
-    // Only process if this is from actual typing (not from focus/programmatic changes)
-    if (e.key === undefined && e.code === undefined) {
-        console.log('Ignoring programmatic input event');
-        return;
-    }
-    
     // Clear any existing timeout for this cell
     if (inputTimeouts.has(cellKey)) {
         clearTimeout(inputTimeouts.get(cellKey));
     }
     
-    // If it's just a single letter, process immediately (no delay) in both modes
+    // For iOS, process immediately for single letters to avoid input lag
     if (/^[A-Za-z]$/.test(value)) {
         console.log('Immediate letter processing:', value, 'Mode:', isSetupMode ? 'Setup' : 'Game');
         processCellInput(cell, row, col);
         return;
     }
     
-    // For numbers and combinations, use debounce delay
+    // For numbers and combinations, use shorter debounce delay for iOS
     const timeoutId = setTimeout(() => {
         processCellInput(cell, row, col);
         inputTimeouts.delete(cellKey);
-    }, 500); // Wait 500ms after last keystroke
+    }, 200); // Reduced delay for better iOS responsiveness
     
     inputTimeouts.set(cellKey, timeoutId);
 }
@@ -742,8 +754,8 @@ function addClueToDisplay(direction, number, text) {
     clueItem.dataset.number = number;
     
     clueItem.innerHTML = `
-        <input type="number" class="clue-number-input" value="${number}" min="1" max="99" ${isSetupMode ? '' : 'readonly'}>
-        <textarea class="clue-input" placeholder="Enter clue..." ${isSetupMode ? '' : 'readonly'}>${text || ''}</textarea>
+        <input type="number" class="clue-number-input" value="${number}" min="1" max="99" ${isSetupMode ? '' : 'readonly'}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric">
+        <textarea class="clue-input" placeholder="Enter clue..." ${isSetupMode ? '' : 'readonly'}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">${text || ''}</textarea>
         <button class="delete-clue-btn" ${isSetupMode ? '' : 'disabled'} style="display: ${isSetupMode ? '' : 'none'}">×</button>
     `;
     
