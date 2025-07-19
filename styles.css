@@ -6,11 +6,19 @@
 
 body {
     font-family: 'Arial', sans-serif;
-    background-color: #f5f5f5;
+    background-color: white;
     padding: 10px;
     margin: 0;
     /* Improve iOS scrolling */
     -webkit-overflow-scrolling: touch;
+}
+
+/* Desktop: clean white background */
+@media (min-width: 1024px) {
+    body {
+        background-color: white;
+        padding: 20px;
+    }
 }
 
 .connection-indicator {
@@ -53,6 +61,17 @@ body {
     border-radius: 10px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     padding: 15px;
+}
+
+/* Desktop: remove card styling for clean newspaper look */
+@media (min-width: 1024px) {
+    .container {
+        background: transparent;
+        border-radius: 0;
+        box-shadow: none;
+        padding: 0;
+        max-width: 1300px;
+    }
 }
 
 
@@ -116,6 +135,121 @@ body {
 
 .new-game-button:active {
     background-color: #bd2130;
+}
+
+.setup-tools {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.brush-button {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 5px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.brush-button:hover {
+    background-color: #5a6268;
+}
+
+.brush-button.active {
+    background-color: #28a745;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.brush-button.active:hover {
+    background-color: #218838;
+}
+
+/* Mobile improvements */
+@media (max-width: 768px) {
+    .brush-button {
+        padding: 10px 14px;
+        font-size: 13px;
+    }
+}
+
+.generate-clues-button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 5px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.generate-clues-button:hover {
+    background-color: #0056b3;
+}
+
+.generate-clues-button:active {
+    background-color: #004085;
+}
+
+.generate-clues-button:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+}
+
+/* Mobile improvements */
+@media (max-width: 768px) {
+    .generate-clues-button {
+        padding: 10px 14px;
+        font-size: 13px;
+    }
+}
+
+/* Brush mode visual feedback */
+.crossword-grid.brush-mode {
+    cursor: crosshair;
+    /* Prevent text selection and other interactions during painting */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.crossword-grid.brush-mode .cell-container {
+    cursor: crosshair;
+    /* Prevent text selection on mobile */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.crossword-grid.brush-mode .cell-container:hover {
+    background-color: rgba(40, 167, 69, 0.2);
+    transition: background-color 0.1s;
+}
+
+/* Mobile-specific brush mode improvements */
+@media (hover: none) and (pointer: coarse) {
+    .crossword-grid.brush-mode .cell-container:hover {
+        background-color: transparent; /* Disable hover on touch devices */
+    }
+    
+    .crossword-grid.brush-mode .cell-container:active {
+        background-color: rgba(40, 167, 69, 0.3); /* Use active state instead */
+    }
 }
 
 .main-content {
@@ -293,10 +427,20 @@ body {
 
 .clues-container {
     width: 100%;
-    max-width: 500px;
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
+    max-width: 600px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+/* Mobile: stack clues vertically */
+@media (max-width: 768px) {
+    .clues-container {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        max-width: 100%;
+    }
 }
 
 .clues-section {
@@ -341,6 +485,61 @@ body {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    /* Remove height restrictions for desktop */
+    max-height: none;
+    overflow: visible;
+}
+
+/* Desktop clue styling - newspaper-like */
+@media (min-width: 1024px) {
+    .clues-list {
+        font-size: 13px;
+        gap: 2px;
+    }
+    
+    .clue-input {
+        font-size: 13px;
+        line-height: 1.3;
+        padding: 4px 6px;
+        min-height: 16px;
+        border: 1px solid #e0e0e0;
+        border-radius: 2px;
+    }
+    
+    .clue-number-input {
+        font-size: 13px;
+        padding: 4px 6px;
+        width: 35px;
+        border: 1px solid #e0e0e0;
+        border-radius: 2px;
+    }
+    
+    .clues-header h3 {
+        font-size: 16px;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #333;
+    }
+    
+    .clue-item {
+        margin-bottom: 3px;
+        align-items: flex-start;
+    }
+    
+    .add-clue-btn {
+        font-size: 12px;
+        padding: 5px 10px;
+    }
+    
+    .delete-clue-btn {
+        font-size: 12px;
+        padding: 3px 7px;
+        margin-left: 5px;
+    }
+    
+    .clues-container {
+        gap: 25px;
+    }
 }
 
 .clue-item {
@@ -474,22 +673,33 @@ body {
 @media (min-width: 1024px) {
     .main-content {
         flex-direction: row;
-        gap: 30px;
+        gap: 40px;
         align-items: flex-start;
+        max-width: 1300px;
+        margin: 0 auto;
+        padding: 0 20px;
     }
     
     .grid-container {
-        flex: 1;
+        flex: 1.2;
+        min-width: 0;
     }
     
     .clues-container {
         flex: 1;
-        max-width: 400px;
+        min-width: 400px;
+        max-width: 500px;
+    }
+    
+    #crossword-grid {
+        max-width: min(65vh, 550px);
+        width: 100%;
     }
     
     .clues-list {
-        max-height: 300px;
-        overflow-y: auto;
+        /* Remove independent scrolling - use page scroll instead */
+        max-height: none;
+        overflow: visible;
     }
 }
 
@@ -635,6 +845,12 @@ body {
         font-size: 13px;
     }
     
+    .setup-tools {
+        margin-top: 8px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
     .clue-input {
         font-size: 16px;
         min-height: 18px;
@@ -708,6 +924,10 @@ body {
     .new-game-button {
         padding: 6px 12px;
         font-size: 12px;
+    }
+    
+    .setup-tools {
+        margin-top: 6px;
     }
     
     .clue-input {

@@ -4,6 +4,9 @@ let currentCell = null;
 let lastUpdateId = 0;
 let inputTimeouts = new Map(); // Store timeouts for each cell
 let isSetupMode = false; // Track current mode - default to game mode
+let isBrushMode = false; // Track black square brush mode
+let isMouseDown = false; // Track mouse state for dragging
+let brushPaintMode = null; // 'black' or 'white' - set on mousedown
 
 // DOM elements - will be initialized when DOM is ready
 let gridElement, acrossCluesList, downCluesList, connectionDot, clientCountElement;
@@ -260,6 +263,16 @@ function createGrid() {
             cell.addEventListener('touchend', handleCellTap); // iOS touch support
             cellContainer.addEventListener('contextmenu', handleRightClick);
             clickOverlay.addEventListener('click', handleCellClick);
+            
+            // Add brush mode event listeners
+            cellContainer.addEventListener('mousedown', handleCellMouseDown);
+            cellContainer.addEventListener('mouseover', handleCellMouseOver);
+            cellContainer.addEventListener('mouseup', handleCellMouseUp);
+            
+            // Add touch event listeners for mobile support
+            cellContainer.addEventListener('touchstart', handleCellTouchStart);
+            cellContainer.addEventListener('touchmove', handleCellTouchMove);
+            cellContainer.addEventListener('touchend', handleCellTouchEnd);
             
             gridElement.appendChild(cellContainer);
         }
@@ -670,6 +683,111 @@ function handleRightClick(e) {
     }
 }
 
+// Brush mode event handlers
+function handleCellMouseDown(e) {
+    if (!isSetupMode || !isBrushMode) return;
+    
+    e.preventDefault();
+    isMouseDown = true;
+    
+    const container = e.target.closest('.cell-container');
+    if (!container) return;
+    
+    const isCurrentlyBlack = container.classList.contains('black');
+    // Set paint mode based on current state - if black, we'll paint white; if white, we'll paint black
+    brushPaintMode = isCurrentlyBlack ? 'white' : 'black';
+    
+    // Paint the clicked cell
+    paintCell(container, brushPaintMode === 'black');
+}
+
+function handleCellMouseOver(e) {
+    if (!isSetupMode || !isBrushMode || !isMouseDown) return;
+    
+    const container = e.target.closest('.cell-container');
+    if (!container) return;
+    
+    // Paint the cell we're hovering over
+    paintCell(container, brushPaintMode === 'black');
+}
+
+function handleCellMouseUp(e) {
+    if (!isSetupMode || !isBrushMode) return;
+    
+    isMouseDown = false;
+    brushPaintMode = null;
+}
+
+function paintCell(container, makeBlack) {
+    const row = parseInt(container.dataset.row);
+    const col = parseInt(container.dataset.col);
+    const cell = document.getElementById(`cell-${row}-${col}`);
+    const numberSpan = document.getElementById(`number-${row}-${col}`);
+    
+    const cellData = {
+        value: '',
+        number: '',
+        isBlack: makeBlack
+    };
+    
+    // Send to server
+    sendToServer({
+        type: 'grid-update',
+        key: `${row}-${col}`,
+        value: cellData
+    });
+    
+    // Apply changes immediately for responsiveness
+    if (cellData.isBlack) {
+        container.classList.add('black');
+        cell.disabled = true;
+        cell.value = '';
+        numberSpan.textContent = '';
+    } else {
+        container.classList.remove('black');
+        cell.disabled = false;
+    }
+}
+
+// Touch event handlers for mobile brush mode
+function handleCellTouchStart(e) {
+    if (!isSetupMode || !isBrushMode) return;
+    
+    e.preventDefault(); // Prevent scrolling and text selection
+    isMouseDown = true;
+    
+    const container = e.target.closest('.cell-container');
+    if (!container) return;
+    
+    const isCurrentlyBlack = container.classList.contains('black');
+    brushPaintMode = isCurrentlyBlack ? 'white' : 'black';
+    
+    paintCell(container, brushPaintMode === 'black');
+}
+
+function handleCellTouchMove(e) {
+    if (!isSetupMode || !isBrushMode || !isMouseDown) return;
+    
+    e.preventDefault(); // Prevent scrolling
+    
+    // Get the element under the touch point
+    const touch = e.touches[0];
+    const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
+    const container = elementUnderTouch?.closest('.cell-container');
+    
+    if (!container) return;
+    
+    paintCell(container, brushPaintMode === 'black');
+}
+
+function handleCellTouchEnd(e) {
+    if (!isSetupMode || !isBrushMode) return;
+    
+    e.preventDefault();
+    isMouseDown = false;
+    brushPaintMode = null;
+}
+
 // Move to specific cell
 function moveTo(row, col) {
     if (row >= 0 && row < GRID_SIZE && col >= 0 && col < GRID_SIZE) {
@@ -990,6 +1108,9 @@ function switchToSetupMode() {
     document.getElementById('setup-mode-btn').classList.add('active');
     document.getElementById('game-mode-btn').classList.remove('active');
     
+    // Show setup tools
+    document.getElementById('setup-tools').style.display = 'block';
+    
     // Enable clue editing and buttons
     updateClueInputsMode(false);
     updateClueButtons(false);
@@ -1000,16 +1121,275 @@ function switchToSetupMode() {
 // Switch to game mode
 function switchToGameMode() {
     isSetupMode = false;
+    isBrushMode = false; // Reset brush mode when leaving setup
     
     // Update button states
     document.getElementById('setup-mode-btn').classList.remove('active');
     document.getElementById('game-mode-btn').classList.add('active');
+    
+    // Hide setup tools and reset brush button
+    document.getElementById('setup-tools').style.display = 'none';
+    const brushBtn = document.getElementById('brush-mode-btn');
+    const gridElement = document.getElementById('crossword-grid');
+    brushBtn.classList.remove('active');
+    brushBtn.textContent = '⬛ Brush Mode';
+    gridElement.classList.remove('brush-mode');
     
     // Disable clue editing and buttons
     updateClueInputsMode(true);
     updateClueButtons(true);
     
     console.log('Switched to Game Mode');
+}
+
+// Toggle brush mode
+function toggleBrushMode() {
+    if (!isSetupMode) return;
+    
+    isBrushMode = !isBrushMode;
+    const brushBtn = document.getElementById('brush-mode-btn');
+    const gridElement = document.getElementById('crossword-grid');
+    
+    if (isBrushMode) {
+        brushBtn.classList.add('active');
+        brushBtn.textContent = '⬛ Brush ON';
+        gridElement.classList.add('brush-mode');
+        console.log('Brush mode enabled');
+    } else {
+        brushBtn.classList.remove('active');
+        brushBtn.textContent = '⬛ Brush Mode';
+        gridElement.classList.remove('brush-mode');
+        console.log('Brush mode disabled');
+    }
+}
+
+// Grid analysis and clue generation functions
+function analyzeGrid() {
+    const words = [];
+    const gridData = getCurrentGridData();
+    
+    // Find horizontal words (across)
+    for (let row = 0; row < GRID_SIZE; row++) {
+        let currentWord = null;
+        
+        for (let col = 0; col < GRID_SIZE; col++) {
+            const cellKey = `${row}-${col}`;
+            const cellData = gridData[cellKey];
+            const isBlack = cellData && cellData.isBlack;
+            
+            if (!isBlack) {
+                // White cell - continue or start word
+                if (!currentWord) {
+                    currentWord = {
+                        direction: 'across',
+                        startRow: row,
+                        startCol: col,
+                        length: 1,
+                        cells: [{row, col}]
+                    };
+                } else {
+                    currentWord.length++;
+                    currentWord.cells.push({row, col});
+                }
+            } else {
+                // Black cell - end current word if it exists and is long enough
+                if (currentWord && currentWord.length >= 2) {
+                    words.push(currentWord);
+                }
+                currentWord = null;
+            }
+        }
+        
+        // End of row - check if we have a word
+        if (currentWord && currentWord.length >= 2) {
+            words.push(currentWord);
+        }
+    }
+    
+    // Find vertical words (down)
+    for (let col = 0; col < GRID_SIZE; col++) {
+        let currentWord = null;
+        
+        for (let row = 0; row < GRID_SIZE; row++) {
+            const cellKey = `${row}-${col}`;
+            const cellData = gridData[cellKey];
+            const isBlack = cellData && cellData.isBlack;
+            
+            if (!isBlack) {
+                // White cell - continue or start word
+                if (!currentWord) {
+                    currentWord = {
+                        direction: 'down',
+                        startRow: row,
+                        startCol: col,
+                        length: 1,
+                        cells: [{row, col}]
+                    };
+                } else {
+                    currentWord.length++;
+                    currentWord.cells.push({row, col});
+                }
+            } else {
+                // Black cell - end current word if it exists and is long enough
+                if (currentWord && currentWord.length >= 2) {
+                    words.push(currentWord);
+                }
+                currentWord = null;
+            }
+        }
+        
+        // End of column - check if we have a word
+        if (currentWord && currentWord.length >= 2) {
+            words.push(currentWord);
+        }
+    }
+    
+    return words;
+}
+
+function getCurrentGridData() {
+    const gridData = {};
+    
+    for (let row = 0; row < GRID_SIZE; row++) {
+        for (let col = 0; col < GRID_SIZE; col++) {
+            const container = document.getElementById(`container-${row}-${col}`);
+            const cell = document.getElementById(`cell-${row}-${col}`);
+            const numberSpan = document.getElementById(`number-${row}-${col}`);
+            
+            if (container && cell && numberSpan) {
+                gridData[`${row}-${col}`] = {
+                    value: cell.value || '',
+                    number: numberSpan.textContent || '',
+                    isBlack: container.classList.contains('black')
+                };
+            }
+        }
+    }
+    
+    return gridData;
+}
+
+function assignClueNumbers(words) {
+    // Sort words by starting position (top to bottom, left to right)
+    const sortedWords = words.sort((a, b) => {
+        if (a.startRow !== b.startRow) {
+            return a.startRow - b.startRow;
+        }
+        return a.startCol - b.startCol;
+    });
+    
+    const numberedCells = new Set();
+    const clueNumbers = {};
+    let currentNumber = 1;
+    
+    sortedWords.forEach(word => {
+        const cellKey = `${word.startRow}-${word.startCol}`;
+        
+        if (!numberedCells.has(cellKey)) {
+            // This cell needs a number
+            word.number = currentNumber;
+            clueNumbers[cellKey] = currentNumber;
+            numberedCells.add(cellKey);
+            currentNumber++;
+        } else {
+            // Cell already has a number from another word
+            word.number = clueNumbers[cellKey];
+        }
+    });
+    
+    return { words: sortedWords, clueNumbers };
+}
+
+function generateClues() {
+    if (!isSetupMode) return;
+    
+    console.log('Analyzing grid for clue generation...');
+    
+    // Analyze grid to find words
+    const words = analyzeGrid();
+    console.log('Found words:', words);
+    
+    if (words.length === 0) {
+        alert('No valid words found in the grid. Please add some white squares to create word patterns.');
+        return;
+    }
+    
+    // Assign numbers to words
+    const { words: numberedWords, clueNumbers } = assignClueNumbers(words);
+    console.log('Numbered words:', numberedWords);
+    console.log('Clue numbers:', clueNumbers);
+    
+    // Update grid with numbers
+    updateGridWithNumbers(clueNumbers);
+    
+    // Generate clue templates
+    generateClueTemplates(numberedWords);
+    
+    console.log('Clue generation complete!');
+}
+
+function updateGridWithNumbers(clueNumbers) {
+    // Clear all existing numbers first
+    for (let row = 0; row < GRID_SIZE; row++) {
+        for (let col = 0; col < GRID_SIZE; col++) {
+            const numberSpan = document.getElementById(`number-${row}-${col}`);
+            if (numberSpan) {
+                numberSpan.textContent = '';
+            }
+        }
+    }
+    
+    // Add new numbers
+    Object.entries(clueNumbers).forEach(([cellKey, number]) => {
+        const [row, col] = cellKey.split('-').map(Number);
+        const numberSpan = document.getElementById(`number-${row}-${col}`);
+        if (numberSpan) {
+            numberSpan.textContent = number;
+        }
+        
+        // Send update to server
+        const container = document.getElementById(`container-${row}-${col}`);
+        const cell = document.getElementById(`cell-${row}-${col}`);
+        if (container && cell) {
+            const cellData = {
+                value: cell.value || '',
+                number: number.toString(),
+                isBlack: container.classList.contains('black')
+            };
+            
+            sendToServer({
+                type: 'grid-update',
+                key: cellKey,
+                value: cellData
+            });
+        }
+    });
+}
+
+function generateClueTemplates(words) {
+    const acrossClues = {};
+    const downClues = {};
+    
+    words.forEach(word => {
+        const clueText = '';  // Empty clue text for manual entry
+        
+        if (word.direction === 'across') {
+            acrossClues[word.number] = clueText;
+        } else {
+            downClues[word.number] = clueText;
+        }
+    });
+    
+    // Send clues to server
+    sendToServer({
+        type: 'clues-update',
+        across: acrossClues,
+        down: downClues
+    });
+    
+    // Update UI
+    updateCluesDisplay('across', acrossClues);
+    updateCluesDisplay('down', downClues);
 }
 
 // Update clue inputs based on mode
@@ -1339,6 +1719,30 @@ document.addEventListener('DOMContentLoaded', () => {
     const gameModeBtn = document.getElementById('game-mode-btn');
     setupModeBtn.addEventListener('click', switchToSetupMode);
     gameModeBtn.addEventListener('click', switchToGameMode);
+    
+    // Add brush mode toggle listener
+    const brushModeBtn = document.getElementById('brush-mode-btn');
+    brushModeBtn.addEventListener('click', toggleBrushMode);
+    
+    // Add generate clues button listener
+    const generateCluesBtn = document.getElementById('generate-clues-btn');
+    generateCluesBtn.addEventListener('click', generateClues);
+    
+    // Add global mouse event listeners for brush dragging
+    document.addEventListener('mouseup', () => {
+        if (isBrushMode) {
+            isMouseDown = false;
+            brushPaintMode = null;
+        }
+    });
+    
+    // Add global touch event listeners for brush dragging
+    document.addEventListener('touchend', () => {
+        if (isBrushMode) {
+            isMouseDown = false;
+            brushPaintMode = null;
+        }
+    });
     
     // Initialize with game mode (default)
     updateClueInputsMode(true); // readonly for game mode
