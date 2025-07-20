@@ -51,6 +51,29 @@
             <div class="setup-tools" id="setup-tools" style="display: none;">
                 <button id="brush-mode-btn" class="brush-button">⬛ Brush Mode</button>
                 <button id="generate-clues-btn" class="generate-clues-button">🔢 Generate Clues</button>
+                <button id="import-clues-btn" class="import-clues-button">📋 Import Clues</button>
+            </div>
+            
+            <div class="clue-import-panel" id="clue-import-panel" style="display: none;">
+                <div class="import-header">
+                    <h3>Import Clues</h3>
+                    <button id="close-import-btn" class="close-import-btn">×</button>
+                </div>
+                <div class="import-instructions">
+                    Paste clues in this format:
+                    <code>1. Clue text (5)<br>2. Another clue (8,3)</code>
+                </div>
+                <textarea id="clue-import-text" class="clue-import-textarea" placeholder="ACROSS
+1. First across clue (5)
+3. Second across clue (8)
+
+DOWN
+1. First down clue (7)
+2. Second down clue (4)"></textarea>
+                <div class="import-actions">
+                    <button id="parse-clues-btn" class="parse-clues-button">Parse & Import</button>
+                    <button id="clear-import-btn" class="clear-import-button">Clear</button>
+                </div>
             </div>
             <button id="new-game-btn" class="new-game-button">New Game</button>
         </div>

@@ -1129,6 +1129,7 @@ function switchToGameMode() {
     
     // Hide setup tools and reset brush button
     document.getElementById('setup-tools').style.display = 'none';
+    document.getElementById('clue-import-panel').style.display = 'none';
     const brushBtn = document.getElementById('brush-mode-btn');
     const gridElement = document.getElementById('crossword-grid');
     brushBtn.classList.remove('active');
@@ -1390,6 +1391,152 @@ function generateClueTemplates(words) {
     // Update UI
     updateCluesDisplay('across', acrossClues);
     updateCluesDisplay('down', downClues);
+}
+
+// Clue import functionality
+function showClueImportPanel() {
+    if (!isSetupMode) return;
+    
+    const panel = document.getElementById('clue-import-panel');
+    panel.style.display = 'block';
+    
+    // Focus the textarea
+    const textarea = document.getElementById('clue-import-text');
+    setTimeout(() => textarea.focus(), 100);
+}
+
+function hideClueImportPanel() {
+    const panel = document.getElementById('clue-import-panel');
+    panel.style.display = 'none';
+}
+
+function clearImportText() {
+    const textarea = document.getElementById('clue-import-text');
+    textarea.value = '';
+    textarea.focus();
+}
+
+function parseAndImportClues() {
+    const textarea = document.getElementById('clue-import-text');
+    const text = textarea.value.trim();
+    
+    if (!text) {
+        alert('Please paste some clues to import.');
+        return;
+    }
+    
+    try {
+        const parsedClues = parseClueText(text);
+        
+        if (parsedClues.across.length === 0 && parsedClues.down.length === 0) {
+            alert('No valid clues found. Please check the format:\n\n1. Clue text (5)\n2. Another clue (8,3)');
+            return;
+        }
+        
+        // Convert to the format expected by the system
+        const acrossClues = {};
+        const downClues = {};
+        
+        parsedClues.across.forEach(clue => {
+            acrossClues[clue.number] = `${clue.text} (${clue.length})`;
+        });
+        
+        parsedClues.down.forEach(clue => {
+            downClues[clue.number] = `${clue.text} (${clue.length})`;
+        });
+        
+        // Send to server
+        sendToServer({
+            type: 'clues-update',
+            across: acrossClues,
+            down: downClues
+        });
+        
+        // Update UI
+        updateCluesDisplay('across', acrossClues);
+        updateCluesDisplay('down', downClues);
+        
+        // Hide panel and show success message
+        hideClueImportPanel();
+        
+        const importedCount = parsedClues.across.length + parsedClues.down.length;
+        alert(`Successfully imported ${importedCount} clues!`);
+        
+        console.log('Imported clues:', { across: acrossClues, down: downClues });
+        console.log('Parsed clues before conversion:', parsedClues);
+        
+    } catch (error) {
+        console.error('Error parsing clues:', error);
+        alert('Error parsing clues. Please check the format and try again.\n\nExpected format:\nACROSS\n1. Clue text (5)\n3. Another clue (8)\n\nDOWN\n1. Down clue (7)\n2. Second clue (4)');
+    }
+}
+
+function parseClueText(text) {
+    const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    const result = { across: [], down: [] };
+    let currentSection = null;
+    
+    console.log('Parsing clue text, lines:', lines);
+    
+    lines.forEach(line => {
+        console.log('Processing line:', line);
+        
+        // Check for section headers
+        const upperLine = line.toUpperCase();
+        if (upperLine === 'ACROSS' || upperLine === 'ACROSS:') {
+            currentSection = 'across';
+            console.log('Found ACROSS section');
+            return;
+        }
+        if (upperLine === 'DOWN' || upperLine === 'DOWN:') {
+            currentSection = 'down';
+            console.log('Found DOWN section');
+            return;
+        }
+        
+        // Try to parse as a clue - more robust regex
+        // Matches: "number. clue text (length)" where length can be like "5", "8,3", "6-5", "6/2/4" etc.
+        const clueRegex = /^(\d+)\.\s*(.+)\s+\(([0-9,\s\-/]+)\)\s*$/;
+        const match = line.match(clueRegex);
+        
+        if (match && currentSection) {
+            const [, number, clueText, length] = match;
+            const clue = {
+                number: parseInt(number),
+                text: clueText.trim(),
+                length: length.trim()
+            };
+            result[currentSection].push(clue);
+            console.log('Parsed clue:', clue);
+            console.log('  - Original line:', line);
+            console.log('  - Extracted text:', `"${clueText.trim()}"`);
+            console.log('  - Extracted length:', `"${length.trim()}"`)
+        } else if (currentSection) {
+            console.log('Failed to parse clue line:', line);
+            
+            // Try alternative parsing for edge cases
+            const altRegex = /^(\d+)\.\s*(.+)$/;
+            const altMatch = line.match(altRegex);
+            if (altMatch) {
+                const [, number, rest] = altMatch;
+                // Look for parentheses at the end
+                const lengthMatch = rest.match(/^(.+?)\s*\(([0-9,\s\-/]+)\)\s*$/);
+                if (lengthMatch) {
+                    const [, clueText, length] = lengthMatch;
+                    const clue = {
+                        number: parseInt(number),
+                        text: clueText.trim(),
+                        length: length.trim()
+                    };
+                    result[currentSection].push(clue);
+                    console.log('Parsed clue (alternative):', clue);
+                }
+            }
+        }
+    });
+    
+    console.log('Final parsed result:', result);
+    return result;
 }
 
 // Update clue inputs based on mode
@@ -1727,6 +1874,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Add generate clues button listener
     const generateCluesBtn = document.getElementById('generate-clues-btn');
     generateCluesBtn.addEventListener('click', generateClues);
+    
+    // Add clue import listeners
+    const importCluesBtn = document.getElementById('import-clues-btn');
+    const closeImportBtn = document.getElementById('close-import-btn');
+    const parseCluesBtn = document.getElementById('parse-clues-btn');
+    const clearImportBtn = document.getElementById('clear-import-btn');
+    
+    importCluesBtn.addEventListener('click', showClueImportPanel);
+    closeImportBtn.addEventListener('click', hideClueImportPanel);
+    parseCluesBtn.addEventListener('click', parseAndImportClues);
+    clearImportBtn.addEventListener('click', clearImportText);
     
     // Add global mouse event listeners for brush dragging
     document.addEventListener('mouseup', () => {
