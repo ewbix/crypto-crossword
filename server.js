@@ -75,6 +75,22 @@ const server = http.createServer((req, res) => {
           }
         } else if (data.type === 'clue-delete') {
           delete gameState.clues[data.direction][data.number];
+        } else if (data.type === 'clues-update') {
+          // Handle bulk clue updates (used by import feature)
+          if (data.across) {
+            Object.entries(data.across).forEach(([number, text]) => {
+              if (text && text.trim() !== '') {
+                gameState.clues.across[number] = text;
+              }
+            });
+          }
+          if (data.down) {
+            Object.entries(data.down).forEach(([number, text]) => {
+              if (text && text.trim() !== '') {
+                gameState.clues.down[number] = text;
+              }
+            });
+          }
         } else if (data.type === 'clear-all') {
           // Clear everything
           gameState.grid = {};
