@@ -55,28 +55,63 @@
                     <button id="setup-mode-btn" class="mode-button">Setup Mode</button>
                     <button id="game-mode-btn" class="mode-button active">Game Mode</button>
                 </div>
+                <div class="color-selector">
+                    <span class="color-label">Your Color:</span>
+                    <div class="color-options">
+                        <button class="color-option" data-color="blue" style="background-color: #3b82f6;" title="Blue"></button>
+                        <button class="color-option" data-color="red" style="background-color: #ef4444;" title="Red"></button>
+                        <button class="color-option" data-color="green" style="background-color: #10b981;" title="Green"></button>
+                        <button class="color-option" data-color="purple" style="background-color: #8b5cf6;" title="Purple"></button>
+                        <button class="color-option" data-color="orange" style="background-color: #f59e0b;" title="Orange"></button>
+                        <button class="color-option" data-color="pink" style="background-color: #ec4899;" title="Pink"></button>
+                        <button class="color-option" data-color="teal" style="background-color: #14b8a6;" title="Teal"></button>
+                        <button class="color-option" data-color="indigo" style="background-color: #6366f1;" title="Indigo"></button>
+                    </div>
+                </div>
                 <button id="new-game-btn" class="new-game-button">New Game</button>
             </div>
             
-            <div class="clue-import-panel" id="clue-import-panel" style="display: none;">
-                <div class="import-header">
-                    <h3>Import Clues</h3>
-                    <button id="close-import-btn" class="close-import-btn">×</button>
-                </div>
-                <div class="import-instructions">
-                    Paste clues in this format:
-                    <code>1. Clue text (5)<br>2. Another clue (8,3)</code>
-                </div>
-                <textarea id="clue-import-text" class="clue-import-textarea" placeholder="ACROSS
+            <!-- Modal backdrop and container -->
+            <div class="modal-overlay" id="clue-import-modal" style="display: none;">
+                <div class="modal-backdrop" id="modal-backdrop"></div>
+                <div class="clue-import-panel">
+                    <div class="import-header">
+                        <h3>Import Clues</h3>
+                        <button id="close-import-btn" class="close-import-btn">×</button>
+                    </div>
+                    <div class="import-instructions">
+                        Paste clues in this format:
+                        <code>1. Clue text (5)<br>2. Another clue (8,3)</code>
+                    </div>
+                    <textarea id="clue-import-text" class="clue-import-textarea" placeholder="ACROSS
 1. First across clue (5)
 3. Second across clue (8)
 
 DOWN
 1. First down clue (7)
 2. Second down clue (4)"></textarea>
-                <div class="import-actions">
-                    <button id="parse-clues-btn" class="parse-clues-button">Parse & Import</button>
-                    <button id="clear-import-btn" class="clear-import-button">Clear</button>
+                    <div class="import-actions">
+                        <button id="parse-clues-btn" class="parse-clues-button">Parse & Import</button>
+                        <button id="clear-import-btn" class="clear-import-button">Clear</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Reusable notice modal -->
+            <div class="modal-overlay" id="notice-modal" style="display: none;">
+                <div class="modal-backdrop" id="notice-backdrop"></div>
+                <div class="notice-modal">
+                    <div class="notice-header">
+                        <h3 id="notice-title">Notice</h3>
+                        <button id="close-notice-btn" class="close-notice-btn">×</button>
+                    </div>
+                    <div class="notice-content">
+                        <p id="notice-message">This is a notice message.</p>
+                    </div>
+                    <div class="notice-actions" id="notice-actions">
+                        <button id="notice-confirm-btn" class="notice-confirm-button">OK</button>
+                        <button id="notice-cancel-btn" class="notice-cancel-button" style="display: none;">Cancel</button>
+                    </div>
                 </div>
             </div>
         </div>

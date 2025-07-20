@@ -19,6 +19,21 @@ if (!clientId) {
     localStorage.setItem('clientId', clientId);
 }
 
+// User color selection - persist across page reloads
+let userColor = localStorage.getItem('userColor') || 'blue';
+
+// Color theme definitions
+const colorThemes = {
+    blue: { primary: '#3b82f6', light: '#dbeafe', border: '#93c5fd' },
+    red: { primary: '#ef4444', light: '#fee2e2', border: '#fca5a5' },
+    green: { primary: '#10b981', light: '#d1fae5', border: '#6ee7b7' },
+    purple: { primary: '#8b5cf6', light: '#ede9fe', border: '#c4b5fd' },
+    orange: { primary: '#f59e0b', light: '#fef3c7', border: '#fcd34d' },
+    pink: { primary: '#ec4899', light: '#fce7f3', border: '#f9a8d4' },
+    teal: { primary: '#14b8a6', light: '#ccfbf1', border: '#5eead4' },
+    indigo: { primary: '#6366f1', light: '#e0e7ff', border: '#a5b4fc' }
+};
+
 // Context-aware clue editing
 let activeWordCells = [];
 let currentClueDirection = null;
@@ -38,6 +53,43 @@ function autoResizeTextarea(textarea) {
     const singleLineHeight = Math.ceil(13 * 1.3) + 4; // font-size * line-height + padding
     // Set height to scrollHeight but ensure it's at least one line
     textarea.style.height = Math.max(textarea.scrollHeight, singleLineHeight) + 'px';
+}
+
+// Color selection functions
+function selectUserColor(color) {
+    userColor = color;
+    localStorage.setItem('userColor', color);
+    
+    // Update UI to show selected color
+    document.querySelectorAll('.color-option').forEach(btn => {
+        btn.classList.remove('selected');
+    });
+    document.querySelector(`[data-color="${color}"]`).classList.add('selected');
+    
+    // Apply color theme to current highlights
+    updateColorTheme();
+    
+    console.log('User color changed to:', color);
+}
+
+function updateColorTheme() {
+    const theme = colorThemes[userColor];
+    
+    // Update CSS custom properties for dynamic theming
+    document.documentElement.style.setProperty('--user-primary', theme.primary);
+    document.documentElement.style.setProperty('--user-light', theme.light);
+    document.documentElement.style.setProperty('--user-border', theme.border);
+    
+    // Re-apply highlighting with new color if there's an active word
+    if (currentClueDirection && currentClueNumber) {
+        highlightWord(currentClueDirection, currentClueNumber);
+    }
+}
+
+function initializeColorSelection() {
+    // Set initial color selection
+    document.querySelector(`[data-color="${userColor}"]`).classList.add('selected');
+    updateColorTheme();
 }
 
 // Initialize HTTP polling
@@ -1058,9 +1110,80 @@ function handleAddClue(direction) {
     }, 100);
 }
 
+// Notice modal system
+function showNotice(title, message, options = {}) {
+    const modal = document.getElementById('notice-modal');
+    const titleEl = document.getElementById('notice-title');
+    const messageEl = document.getElementById('notice-message');
+    const confirmBtn = document.getElementById('notice-confirm-btn');
+    const cancelBtn = document.getElementById('notice-cancel-btn');
+    
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    
+    // Configure buttons
+    confirmBtn.textContent = options.confirmText || 'OK';
+    confirmBtn.className = 'notice-confirm-button' + (options.confirmType ? ` ${options.confirmType}` : '');
+    
+    if (options.showCancel) {
+        cancelBtn.style.display = 'block';
+        cancelBtn.textContent = options.cancelText || 'Cancel';
+    } else {
+        cancelBtn.style.display = 'none';
+    }
+    
+    // Show modal
+    modal.style.display = 'flex';
+    
+    // Return a promise that resolves when user makes a choice
+    return new Promise((resolve) => {
+        const handleConfirm = () => {
+            modal.style.display = 'none';
+            cleanup();
+            resolve(true);
+        };
+        
+        const handleCancel = () => {
+            modal.style.display = 'none';
+            cleanup();
+            resolve(false);
+        };
+        
+        const handleEscape = (e) => {
+            if (e.key === 'Escape' && modal.style.display === 'flex') {
+                handleCancel();
+            }
+        };
+        
+        const cleanup = () => {
+            confirmBtn.removeEventListener('click', handleConfirm);
+            cancelBtn.removeEventListener('click', handleCancel);
+            document.getElementById('close-notice-btn').removeEventListener('click', handleCancel);
+            document.getElementById('notice-backdrop').removeEventListener('click', handleCancel);
+            document.removeEventListener('keydown', handleEscape);
+        };
+        
+        // Add event listeners
+        confirmBtn.addEventListener('click', handleConfirm);
+        cancelBtn.addEventListener('click', handleCancel);
+        document.getElementById('close-notice-btn').addEventListener('click', handleCancel);
+        document.getElementById('notice-backdrop').addEventListener('click', handleCancel);
+        document.addEventListener('keydown', handleEscape);
+    });
+}
+
 // Handle New Game button
-function handleNewGame() {
-    const confirmed = confirm('Are you sure you want to start a new game? This will clear the entire grid and all clues for everyone!');
+async function handleNewGame() {
+    const confirmed = await showNotice(
+        'New Game',
+        'Are you sure you want to start a new game? This will clear the entire grid and all clues for everyone!',
+        {
+            showCancel: true,
+            confirmText: 'Clear Game',
+            confirmType: 'danger',
+            cancelText: 'Cancel'
+        }
+    );
     
     if (confirmed) {
         // Send clear command to server
@@ -1129,7 +1252,7 @@ function switchToGameMode() {
     
     // Hide setup tools and reset brush button
     document.getElementById('setup-tools').style.display = 'none';
-    document.getElementById('clue-import-panel').style.display = 'none';
+    document.getElementById('clue-import-modal').style.display = 'none';
     const brushBtn = document.getElementById('brush-mode-btn');
     const gridElement = document.getElementById('crossword-grid');
     brushBtn.classList.remove('active');
@@ -1301,7 +1424,7 @@ function assignClueNumbers(words) {
     return { words: sortedWords, clueNumbers };
 }
 
-function generateClues() {
+async function generateClues() {
     if (!isSetupMode) return;
     
     console.log('Analyzing grid for clue generation...');
@@ -1311,7 +1434,13 @@ function generateClues() {
     console.log('Found words:', words);
     
     if (words.length === 0) {
-        alert('No valid words found in the grid. Please add some white squares to create word patterns.');
+        await showNotice(
+            'No Valid Words',
+            'No valid words found in the grid. Please add some white squares to create word patterns.',
+            {
+                confirmText: 'OK'
+            }
+        );
         return;
     }
     
@@ -1397,8 +1526,8 @@ function generateClueTemplates(words) {
 function showClueImportPanel() {
     if (!isSetupMode) return;
     
-    const panel = document.getElementById('clue-import-panel');
-    panel.style.display = 'block';
+    const modal = document.getElementById('clue-import-modal');
+    modal.style.display = 'flex';
     
     // Focus the textarea
     const textarea = document.getElementById('clue-import-text');
@@ -1406,8 +1535,8 @@ function showClueImportPanel() {
 }
 
 function hideClueImportPanel() {
-    const panel = document.getElementById('clue-import-panel');
-    panel.style.display = 'none';
+    const modal = document.getElementById('clue-import-modal');
+    modal.style.display = 'none';
 }
 
 function clearImportText() {
@@ -1416,12 +1545,18 @@ function clearImportText() {
     textarea.focus();
 }
 
-function parseAndImportClues() {
+async function parseAndImportClues() {
     const textarea = document.getElementById('clue-import-text');
     const text = textarea.value.trim();
     
     if (!text) {
-        alert('Please paste some clues to import.');
+        await showNotice(
+            'No Content',
+            'Please paste some clues to import.',
+            {
+                confirmText: 'OK'
+            }
+        );
         return;
     }
     
@@ -1429,7 +1564,13 @@ function parseAndImportClues() {
         const parsedClues = parseClueText(text);
         
         if (parsedClues.across.length === 0 && parsedClues.down.length === 0) {
-            alert('No valid clues found. Please check the format:\n\n1. Clue text (5)\n2. Another clue (8,3)');
+            await showNotice(
+                'No Valid Clues Found',
+                'No valid clues found. Please check the format:\n\n1. Clue text (5)\n2. Another clue (8,3)',
+                {
+                    confirmText: 'OK'
+                }
+            );
             return;
         }
         
@@ -1460,14 +1601,27 @@ function parseAndImportClues() {
         hideClueImportPanel();
         
         const importedCount = parsedClues.across.length + parsedClues.down.length;
-        alert(`Successfully imported ${importedCount} clues!`);
+        await showNotice(
+            'Import Successful',
+            `Successfully imported ${importedCount} clues!`,
+            {
+                confirmText: 'OK',
+                confirmType: 'success'
+            }
+        );
         
         console.log('Imported clues:', { across: acrossClues, down: downClues });
         console.log('Parsed clues before conversion:', parsedClues);
         
     } catch (error) {
         console.error('Error parsing clues:', error);
-        alert('Error parsing clues. Please check the format and try again.\n\nExpected format:\nACROSS\n1. Clue text (5)\n3. Another clue (8)\n\nDOWN\n1. Down clue (7)\n2. Second clue (4)');
+        await showNotice(
+            'Parsing Error',
+            'Error parsing clues. Please check the format and try again.\n\nExpected format:\nACROSS\n1. Clue text (5)\n3. Another clue (8)\n\nDOWN\n1. Down clue (7)\n2. Second clue (4)',
+            {
+                confirmText: 'OK'
+            }
+        );
     }
 }
 
@@ -1683,6 +1837,9 @@ function clearWordHighlight() {
     document.querySelectorAll('.word-highlight').forEach(container => {
         container.classList.remove('word-highlight');
     });
+    document.querySelectorAll('.clue-item.highlighted').forEach(item => {
+        item.classList.remove('highlighted');
+    });
     activeWordCells = [];
     currentClueDirection = null;
     currentClueNumber = null;
@@ -1698,13 +1855,20 @@ function clearWordHighlight() {
 function showActiveClue(direction, number) {
     if (!activeClueDisplay) return;
     
-    // Find the clue text
+    // Clear previous clue highlighting
+    document.querySelectorAll('.clue-item.highlighted').forEach(item => {
+        item.classList.remove('highlighted');
+    });
+    
+    // Find the clue text and highlight it
     const clueItem = document.querySelector(`[data-direction="${direction}"][data-number="${number}"]`);
     let clueText = '';
     
     if (clueItem) {
         const clueInput = clueItem.querySelector('.clue-input');
         clueText = clueInput ? clueInput.value : '';
+        // Highlight the clue item
+        clueItem.classList.add('highlighted');
     }
     
     // Update the display
@@ -1871,6 +2035,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const brushModeBtn = document.getElementById('brush-mode-btn');
     brushModeBtn.addEventListener('click', toggleBrushMode);
     
+    // Add color selection listeners
+    document.querySelectorAll('.color-option').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const color = e.target.dataset.color;
+            selectUserColor(color);
+        });
+    });
+    
+    // Initialize color selection
+    initializeColorSelection();
+    
     // Add generate clues button listener
     const generateCluesBtn = document.getElementById('generate-clues-btn');
     generateCluesBtn.addEventListener('click', generateClues);
@@ -1880,11 +2055,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeImportBtn = document.getElementById('close-import-btn');
     const parseCluesBtn = document.getElementById('parse-clues-btn');
     const clearImportBtn = document.getElementById('clear-import-btn');
+    const modalBackdrop = document.getElementById('modal-backdrop');
     
     importCluesBtn.addEventListener('click', showClueImportPanel);
     closeImportBtn.addEventListener('click', hideClueImportPanel);
     parseCluesBtn.addEventListener('click', parseAndImportClues);
     clearImportBtn.addEventListener('click', clearImportText);
+    
+    // Click outside to close modal
+    modalBackdrop.addEventListener('click', hideClueImportPanel);
+    
+    // Escape key to close modal
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const modal = document.getElementById('clue-import-modal');
+            if (modal.style.display === 'flex') {
+                hideClueImportPanel();
+            }
+        }
+    });
     
     // Add global mouse event listeners for brush dragging
     document.addEventListener('mouseup', () => {

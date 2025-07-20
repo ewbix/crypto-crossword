@@ -93,6 +93,61 @@ body {
     flex-wrap: wrap;
 }
 
+/* Color selector styles */
+.color-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #f4f4f5;
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+
+.color-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: #6b7280;
+    white-space: nowrap;
+}
+
+.color-options {
+    display: flex;
+    gap: 6px;
+}
+
+.color-option {
+    width: 24px;
+    height: 24px;
+    border: 2px solid transparent;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.color-option:hover {
+    transform: scale(1.1);
+    border-color: rgba(0, 0, 0, 0.2);
+}
+
+.color-option.selected {
+    border-color: #374151;
+    transform: scale(1.15);
+    box-shadow: 0 0 0 2px rgba(55, 65, 81, 0.3);
+}
+
+.color-option.selected::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
 .mode-toggle {
     display: inline-flex;
     background: #f4f4f5;
@@ -251,15 +306,43 @@ body {
     }
 }
 
+/* Modal overlay styles */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.modal-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
 .clue-import-panel {
+    position: relative;
     background: white;
     border: 2px solid #e0e0e0;
-    border-radius: 8px;
-    padding: 20px;
-    margin: 20px 0;
+    border-radius: 12px;
+    padding: 24px;
     max-width: 600px;
     width: 100%;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    z-index: 1001;
 }
 
 .import-header {
@@ -271,8 +354,9 @@ body {
 
 .import-header h3 {
     margin: 0;
-    color: #333;
-    font-size: 18px;
+    color: #1f2937;
+    font-size: 20px;
+    font-weight: 600;
 }
 
 .close-import-btn {
@@ -280,28 +364,32 @@ body {
     border: none;
     font-size: 24px;
     cursor: pointer;
-    color: #666;
+    color: #6b7280;
     padding: 0;
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 50%;
-    transition: background-color 0.2s;
+    border-radius: 8px;
+    transition: all 0.2s ease;
 }
 
 .close-import-btn:hover {
-    background-color: #f0f0f0;
+    background-color: #f3f4f6;
+    color: #374151;
+    transform: scale(1.05);
 }
 
 .import-instructions {
-    background: #f8f9fa;
-    padding: 12px;
-    border-radius: 5px;
-    margin-bottom: 15px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 20px;
     font-size: 14px;
-    color: #666;
+    color: #4b5563;
+    line-height: 1.5;
 }
 
 .import-instructions code {
@@ -318,55 +406,67 @@ body {
 .clue-import-textarea {
     width: 100%;
     height: 200px;
-    padding: 12px;
-    border: 2px solid #e0e0e0;
-    border-radius: 5px;
-    font-family: monospace;
+    padding: 16px;
+    border: 2px solid #d1d5db;
+    border-radius: 8px;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
     font-size: 14px;
-    line-height: 1.4;
+    line-height: 1.5;
     resize: vertical;
-    margin-bottom: 15px;
+    margin-bottom: 20px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    background-color: #ffffff;
 }
 
 .clue-import-textarea:focus {
     outline: none;
-    border-color: #6f42c1;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .import-actions {
     display: flex;
-    gap: 10px;
+    gap: 12px;
     justify-content: flex-end;
+    padding-top: 4px;
 }
 
 .parse-clues-button {
-    background-color: #28a745;
+    background-color: #059669;
     color: white;
     border: none;
-    padding: 10px 20px;
-    border-radius: 5px;
+    padding: 12px 24px;
+    border-radius: 8px;
     font-size: 14px;
+    font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 .parse-clues-button:hover {
-    background-color: #218838;
+    background-color: #047857;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.12);
 }
 
 .clear-import-button {
-    background-color: #6c757d;
+    background-color: #6b7280;
     color: white;
     border: none;
-    padding: 10px 20px;
-    border-radius: 5px;
+    padding: 12px 24px;
+    border-radius: 8px;
     font-size: 14px;
+    font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 .clear-import-button:hover {
-    background-color: #5a6268;
+    background-color: #4b5563;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.12);
 }
 
 /* Mobile responsive */
@@ -383,6 +483,196 @@ body {
     .parse-clues-button,
     .clear-import-button {
         width: 100%;
+    }
+}
+
+/* Notice modal styles */
+.notice-modal {
+    position: relative;
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 500px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    z-index: 1001;
+}
+
+.notice-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.notice-header h3 {
+    margin: 0;
+    color: #1f2937;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.close-notice-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #6b7280;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.close-notice-btn:hover {
+    background-color: #f3f4f6;
+    color: #374151;
+    transform: scale(1.05);
+}
+
+.notice-content {
+    margin-bottom: 24px;
+}
+
+.notice-content p {
+    margin: 0;
+    color: #4b5563;
+    font-size: 16px;
+    line-height: 1.6;
+    white-space: pre-line;
+}
+
+.notice-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.notice-confirm-button {
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.notice-confirm-button:hover {
+    background-color: #2563eb;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.12);
+}
+
+.notice-confirm-button.danger {
+    background-color: #dc2626;
+}
+
+.notice-confirm-button.danger:hover {
+    background-color: #b91c1c;
+}
+
+.notice-confirm-button.success {
+    background-color: #059669;
+}
+
+.notice-confirm-button.success:hover {
+    background-color: #047857;
+}
+
+.notice-cancel-button {
+    background-color: #6b7280;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.notice-cancel-button:hover {
+    background-color: #4b5563;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.12);
+}
+
+/* Mobile responsive for notice modal */
+@media (max-width: 768px) {
+    .notice-modal {
+        margin: 15px;
+        padding: 20px;
+    }
+    
+    .notice-actions {
+        flex-direction: column;
+    }
+    
+    .notice-confirm-button,
+    .notice-cancel-button {
+        width: 100%;
+    }
+}
+
+/* User color theming with CSS custom properties */
+:root {
+    --user-primary: #3b82f6;
+    --user-light: #dbeafe;
+    --user-border: #93c5fd;
+}
+
+/* Apply user colors to highlights */
+.word-highlight {
+    background-color: var(--user-light) !important;
+    border: 2px solid var(--user-border) !important;
+}
+
+.clue-item.highlighted {
+    background-color: var(--user-light) !important;
+    border-left: 4px solid var(--user-primary) !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+}
+
+.grid-cell:focus {
+    border: 3px solid var(--user-primary) !important;
+    box-shadow: 0 0 0 2px var(--user-light) !important;
+}
+
+.active-clue-display {
+    border-left: 4px solid var(--user-primary) !important;
+    background-color: var(--user-light) !important;
+}
+
+/* Mobile responsive for color selector */
+@media (max-width: 768px) {
+    .control-buttons {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .color-selector {
+        order: -1; /* Show color selector first on mobile */
+    }
+    
+    .color-label {
+        font-size: 13px;
+    }
+    
+    .color-option {
+        width: 28px;
+        height: 28px;
     }
 }
 
