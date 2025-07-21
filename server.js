@@ -18,7 +18,13 @@ let updateId = 0;
 // Track connected clients with timeout cleanup
 let connectedClients = new Map(); // clientId -> lastSeen timestamp
 let clientCounter = 0;
-const CLIENT_TIMEOUT = 10000; // 10 seconds timeout
+const CLIENT_TIMEOUT = 3000; // 3 seconds timeout for faster testing
+
+// Track user presence data
+let userPresence = new Map(); // clientId -> { color, position, lastSeen }
+
+// Clear any stale presence data on server start
+console.log('Server starting - clearing any stale presence data');
 
 // Clean up inactive clients
 function cleanupClients() {
@@ -26,6 +32,7 @@ function cleanupClients() {
   for (const [clientId, lastSeen] of connectedClients.entries()) {
     if (now - lastSeen > CLIENT_TIMEOUT) {
       connectedClients.delete(clientId);
+      userPresence.delete(clientId); // Also clean up presence data
     }
   }
 }
@@ -44,9 +51,40 @@ const server = http.createServer((req, res) => {
     }
     cleanupClients();
     
+    // Clean up stale presence data before sending
+    const now = Date.now();
+    console.log('=== SERVER PRESENCE CLEANUP ===');
+    console.log('Current time:', now);
+    console.log('Total presence entries before cleanup:', userPresence.size);
+    
+    const staleClients = [];
+    for (const [clientId, data] of userPresence.entries()) {
+      const age = now - data.lastSeen;
+      console.log(`Client ${clientId}: age=${age}ms, timeout=${CLIENT_TIMEOUT}ms`);
+      if (age > CLIENT_TIMEOUT) {
+        staleClients.push(clientId);
+      }
+    }
+    
+    staleClients.forEach(clientId => {
+      console.log('Removing stale presence data for client:', clientId);
+      userPresence.delete(clientId);
+    });
+    
+    console.log('Presence entries after cleanup:', userPresence.size);
+    console.log('Active presence data:', Array.from(userPresence.entries()).map(([id, data]) => ({
+      clientId: id,
+      position: data.position,
+      age: now - data.lastSeen
+    })));
+    
     const response = {
       ...gameState,
-      clientCount: connectedClients.size
+      clientCount: connectedClients.size,
+      userPresence: Array.from(userPresence.entries()).map(([clientId, data]) => ({
+        clientId,
+        ...data
+      }))
     };
     
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -131,10 +169,10 @@ const server = http.createServer((req, res) => {
     const since = parseInt(parsedUrl.query.since || '0');
     const newUpdates = updates.filter(update => update.id > since);
     
-    // Add client count update if it changed
+    // Add client count update if it changed (but don't spam)
     const currentClientCount = connectedClients.size;
-    const lastUpdate = updates[updates.length - 1];
-    if (!lastUpdate || lastUpdate.clientCount !== currentClientCount) {
+    const lastClientCountUpdate = updates.slice().reverse().find(u => u.type === 'client-count');
+    if (!lastClientCountUpdate || lastClientCountUpdate.clientCount !== currentClientCount) {
       newUpdates.push({
         id: -1, // Special ID for client count
         type: 'client-count',
@@ -145,6 +183,86 @@ const server = http.createServer((req, res) => {
     
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(newUpdates));
+    return;
+  }
+  
+  if (pathname === '/api/disconnect' && req.method === 'POST') {
+    // Handle client disconnect
+    const clientId = req.headers['x-client-id'];
+    if (clientId) {
+      console.log('=== CLIENT DISCONNECT ===');
+      console.log('Removing client:', clientId);
+      connectedClients.delete(clientId);
+      userPresence.delete(clientId);
+      
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true }));
+    } else {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Missing client ID' }));
+    }
+    return;
+  }
+  
+  if (pathname === '/api/presence' && req.method === 'POST') {
+    // Handle user presence updates
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Missing client ID' }));
+      return;
+    }
+    
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body);
+        
+        // Update user presence
+        console.log('=== UPDATING USER PRESENCE ===');
+        console.log('Client ID:', clientId);
+        console.log('Color:', data.color);
+        console.log('Position:', data.position);
+        
+        userPresence.set(clientId, {
+          color: data.color,
+          position: data.position,
+          lastSeen: Date.now()
+        });
+        
+        console.log('Total presence entries after update:', userPresence.size);
+        
+        // Register client as active
+        connectedClients.set(clientId, Date.now());
+        
+        // Add presence update to the updates stream
+        updates.push({
+          id: ++updateId,
+          type: 'presence-update',
+          timestamp: Date.now(),
+          data: {
+            type: 'presence-update',
+            clientId: clientId,
+            color: data.color,
+            position: data.position
+          }
+        });
+        
+        // Keep only last 100 updates
+        if (updates.length > 100) {
+          updates = updates.slice(-100);
+        }
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      } catch (error) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON' }));
+      }
+    });
     return;
   }
   

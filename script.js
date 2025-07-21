@@ -12,15 +12,17 @@ let brushPaintMode = null; // 'black' or 'white' - set on mousedown
 let gridElement, acrossCluesList, downCluesList, connectionDot, clientCountElement;
 let activeClueDisplay, activeClueNumber, activeClueText;
 
-// Client tracking - use localStorage to persist across page reloads
-let clientId = localStorage.getItem('clientId');
-if (!clientId) {
-    clientId = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    localStorage.setItem('clientId', clientId);
-}
+// Client tracking - generate unique ID per tab/session (not persistent)
+let clientId = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+console.log('Client ID for this tab:', clientId);
 
 // User color selection - persist across page reloads
 let userColor = localStorage.getItem('userColor') || 'blue';
+
+// User presence tracking
+let currentUserPosition = null; // { type: 'cell', row: number, col: number } or { type: 'clue', direction: string, number: string }
+let lastSentPosition = null;
+let otherUsers = new Map(); // clientId -> { color, position }
 
 // Color theme definitions
 const colorThemes = {
@@ -69,6 +71,11 @@ function selectUserColor(color) {
     // Apply color theme to current highlights
     updateColorTheme();
     
+    // Send updated presence with new color
+    if (currentUserPosition) {
+        sendPresenceUpdate(currentUserPosition);
+    }
+    
     console.log('User color changed to:', color);
 }
 
@@ -90,6 +97,50 @@ function initializeColorSelection() {
     // Set initial color selection
     document.querySelector(`[data-color="${userColor}"]`).classList.add('selected');
     updateColorTheme();
+}
+
+// Helper function to adjust color brightness
+function adjustColorBrightness(hex, percent) {
+    // Remove # if present
+    hex = hex.replace('#', '');
+    
+    // Convert to RGB
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    
+    // For darkening (negative percent), use a simpler approach
+    if (percent < 0) {
+        const factor = 1 + (percent / 100);
+        const newR = Math.max(0, Math.round(r * factor));
+        const newG = Math.max(0, Math.round(g * factor));
+        const newB = Math.max(0, Math.round(b * factor));
+        
+        // Convert back to hex
+        const toHex = (c) => {
+            const hex = c.toString(16);
+            return hex.length === 1 ? '0' + hex : hex;
+        };
+        
+        const result = `#${toHex(newR)}${toHex(newG)}${toHex(newB)}`;
+        console.log(`Color adjustment: ${hex} -> ${result} (${percent}%)`);
+        return result;
+    }
+    
+    // For lightening (positive percent)
+    const newR = Math.min(255, Math.round(r + (255 - r) * (percent / 100)));
+    const newG = Math.min(255, Math.round(g + (255 - g) * (percent / 100)));
+    const newB = Math.min(255, Math.round(b + (255 - b) * (percent / 100)));
+    
+    // Convert back to hex
+    const toHex = (c) => {
+        const hex = c.toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+    };
+    
+    const result = `#${toHex(newR)}${toHex(newG)}${toHex(newB)}`;
+    console.log(`Color adjustment: ${hex} -> ${result} (${percent}%)`);
+    return result;
 }
 
 // Initialize HTTP polling
@@ -148,6 +199,15 @@ async function loadInitialState() {
             clientCountElement.textContent = gameState.clientCount;
         }
         
+        // Update user presence
+        if (gameState.userPresence) {
+            console.log('=== RECEIVED INITIAL PRESENCE DATA ===');
+            console.log('Raw presence data:', gameState.userPresence);
+            updateUserPresence(gameState.userPresence);
+        } else {
+            console.log('No initial presence data received');
+        }
+        
     } catch (error) {
         console.error('Failed to load initial state:', error);
         connectionDot.className = 'connection-dot';
@@ -165,8 +225,16 @@ async function checkForImmediateUpdates() {
         console.log('Checking for immediate updates:', updates);
         
         updates.forEach(update => {
+            console.log('=== IMMEDIATE UPDATE ===');
+            console.log('Update type:', update.type);
+            console.log('Update data:', update.data);
+            
             if (update.type === 'client-count') {
                 clientCountElement.textContent = update.clientCount;
+            } else if (update.type === 'presence-update') {
+                console.log('Processing immediate presence update!');
+                handlePresenceUpdate(update.data);
+                lastUpdateId = Math.max(lastUpdateId, update.id);
             } else {
                 handleServerUpdate(update.data);
                 lastUpdateId = Math.max(lastUpdateId, update.id);
@@ -188,8 +256,16 @@ function startPolling() {
             const updates = await response.json();
             
             updates.forEach(update => {
+                console.log('=== RECEIVED UPDATE ===');
+                console.log('Update type:', update.type);
+                console.log('Update data:', update.data);
+                
                 if (update.type === 'client-count') {
                     clientCountElement.textContent = update.clientCount;
+                } else if (update.type === 'presence-update') {
+                    console.log('Processing presence update!');
+                    handlePresenceUpdate(update.data);
+                    lastUpdateId = Math.max(lastUpdateId, update.id);
                 } else {
                     handleServerUpdate(update.data);
                     lastUpdateId = Math.max(lastUpdateId, update.id);
@@ -255,7 +331,8 @@ async function sendToServer(data) {
         await fetch('/api/update', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Client-ID': clientId
             },
             body: JSON.stringify(data)
         });
@@ -263,6 +340,319 @@ async function sendToServer(data) {
         console.error('Failed to send update:', error);
     }
 }
+
+// Send user presence update to server
+async function sendPresenceUpdate(position) {
+    console.log('=== SENDING PRESENCE UPDATE ===');
+    console.log('Position:', position);
+    console.log('Client ID:', clientId);
+    console.log('User Color:', userColor);
+    
+    // Don't spam the server with identical position updates
+    if (JSON.stringify(position) === JSON.stringify(lastSentPosition)) {
+        console.log('Skipping identical position update');
+        return;
+    }
+    
+    currentUserPosition = position;
+    lastSentPosition = position ? JSON.parse(JSON.stringify(position)) : null;
+    
+    try {
+        const response = await fetch('/api/presence', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Client-ID': clientId
+            },
+            body: JSON.stringify({
+                clientId: clientId,
+                color: userColor,
+                position: position
+            })
+        });
+        
+        const result = await response.text();
+        console.log('Presence update response:', result);
+        
+    } catch (error) {
+        console.error('Failed to send presence update:', error);
+    }
+}
+
+// Handle presence updates from other users
+function handlePresenceUpdate(data) {
+    console.log('Received presence update:', data);
+    
+    // Don't process our own presence updates
+    if (data.clientId === clientId) {
+        console.log('Ignoring own presence update');
+        return;
+    }
+    
+    console.log('Processing presence update for other user:', data.clientId);
+    
+    // Update other users map
+    if (data.position) {
+        otherUsers.set(data.clientId, {
+            color: data.color,
+            position: data.position
+        });
+        console.log('Updated user position:', data.clientId, data.position);
+    } else {
+        // User disconnected or cleared position
+        otherUsers.delete(data.clientId);
+        console.log('Removed user:', data.clientId);
+    }
+    
+    // Update visual indicators
+    updateOtherUsersDisplay();
+}
+
+// Update initial user presence from server state
+function updateUserPresence(presenceArray) {
+    console.log('=== INITIAL PRESENCE DATA ===');
+    console.log('Presence array:', presenceArray);
+    console.log('Our client ID:', clientId);
+    
+    // Clear existing data
+    otherUsers.clear();
+    
+    // Populate with current presence data
+    presenceArray.forEach(user => {
+        console.log('Processing user:', user.clientId, 'vs our ID:', clientId);
+        if (user.clientId !== clientId && user.position) {
+            console.log('Adding other user:', user.clientId, user.position);
+            otherUsers.set(user.clientId, {
+                color: user.color,
+                position: user.position
+            });
+        }
+    });
+    
+    // Update visual indicators
+    updateOtherUsersDisplay();
+}
+
+// Update visual indicators for other users
+function updateOtherUsersDisplay() {
+    console.log('=== UPDATING VISUAL INDICATORS ===');
+    console.log('Active users:', otherUsers.size);
+    console.log('User data:', Array.from(otherUsers.entries()));
+    
+    // Clear all existing other-user indicators with detailed logging
+    const indicators = document.querySelectorAll('.other-user-indicator');
+    const activeCells = document.querySelectorAll('.cell-container.other-user-active-cell');
+    const wordHighlights = document.querySelectorAll('.cell-container.other-user-word-highlight');
+    const clueHighlights = document.querySelectorAll('.clue-item.other-user-clue');
+    
+    // Also check for any containers that might have stale styling
+    const allContainers = document.querySelectorAll('.cell-container');
+    const allClueItems = document.querySelectorAll('.clue-item');
+    
+    console.log('Cleaning up:', {
+        indicators: indicators.length,
+        activeCells: activeCells.length, 
+        wordHighlights: wordHighlights.length,
+        clueHighlights: clueHighlights.length
+    });
+    
+    indicators.forEach(el => el.remove());
+    activeCells.forEach(container => {
+        container.classList.remove('other-user-active-cell');
+        container.style.removeProperty('background-color');
+        container.style.removeProperty('border-color');
+        container.style.removeProperty('border');
+    });
+    wordHighlights.forEach(container => {
+        container.classList.remove('other-user-word-highlight');
+        container.style.removeProperty('background-color');
+        container.style.removeProperty('border-color');
+        container.style.removeProperty('border');
+    });
+    clueHighlights.forEach(item => {
+        item.classList.remove('other-user-clue');
+        item.style.removeProperty('border-left-color');
+        item.style.removeProperty('border-color');
+        item.style.removeProperty('border');
+    });
+    
+    // Additional comprehensive cleanup for any stale styling
+    allContainers.forEach(container => {
+        if (container.classList.contains('other-user-active-cell') || 
+            container.classList.contains('other-user-word-highlight')) {
+            container.classList.remove('other-user-active-cell', 'other-user-word-highlight');
+            container.style.removeProperty('background-color');
+            container.style.removeProperty('border-color');
+            container.style.removeProperty('border');
+        }
+    });
+    
+    allClueItems.forEach(item => {
+        if (item.classList.contains('other-user-clue')) {
+            item.classList.remove('other-user-clue');
+            item.style.removeProperty('border-left-color');
+            item.style.removeProperty('border-color');
+            item.style.removeProperty('border');
+        }
+    });
+    
+    console.log('Comprehensive cleanup complete. Now adding new indicators...');
+    
+    // Add indicators for each active user
+    otherUsers.forEach((userData, userId) => {
+        const { color, position } = userData;
+        const theme = colorThemes[color];
+        
+        console.log(`Adding indicator for user ${userId} at`, position, 'with color', color);
+        
+        if (position.type === 'cell') {
+            // Show active cell with darker background
+            const container = document.getElementById(`container-${position.row}-${position.col}`);
+            console.log('Found container for cell:', container);
+            if (container) {
+                container.classList.add('other-user-active-cell');
+                // Use a darker shade of the user's color for the active cell
+                const darkShade = adjustColorBrightness(theme.light, -30);
+                container.style.backgroundColor = darkShade;
+                console.log('Added active cell highlighting with color:', darkShade);
+            }
+            
+            // If this cell position also includes clue info, highlight the word
+            if (position.activeClue) {
+                console.log('Also highlighting word for clue:', position.activeClue);
+                const wordStart = findWordStart(position.activeClue.number);
+                if (wordStart) {
+                    const wordCells = findWordCells(wordStart.row, wordStart.col, position.activeClue.direction);
+                    console.log('Found word cells for highlighting:', wordCells.length);
+                    
+                    wordCells.forEach(cell => {
+                        if (cell.container && cell.container !== container) {
+                            cell.container.classList.add('other-user-word-highlight');
+                            cell.container.style.backgroundColor = theme.light;
+                        }
+                    });
+                }
+            }
+        } else if (position.type === 'clue') {
+            // Show indicator on clue
+            const clueItem = document.querySelector(`[data-direction="${position.direction}"][data-number="${position.number}"]`);
+            console.log('Found clue item:', clueItem);
+            if (clueItem) {
+                clueItem.classList.add('other-user-clue');
+                clueItem.style.borderLeftColor = theme.primary;
+                
+                // Add small colored dot indicator
+                const indicator = document.createElement('div');
+                indicator.className = 'other-user-indicator';
+                indicator.style.cssText = `
+                    position: absolute;
+                    top: 8px;
+                    right: 8px;
+                    width: 8px;
+                    height: 8px;
+                    background-color: ${theme.primary};
+                    border-radius: 50%;
+                    z-index: 10;
+                    pointer-events: none;
+                `;
+                clueItem.style.position = 'relative';
+                clueItem.appendChild(indicator);
+                console.log('Added clue indicator');
+            }
+            
+            // Also highlight the word cells for this clue
+            const wordStart = findWordStart(position.number);
+            console.log('Finding word start for clue', position.number, ':', wordStart);
+            if (wordStart) {
+                const wordCells = findWordCells(wordStart.row, wordStart.col, position.direction);
+                console.log('Found word cells:', wordCells.length);
+                
+                wordCells.forEach(cell => {
+                    if (cell.container) {
+                        cell.container.classList.add('other-user-word-highlight');
+                        cell.container.style.backgroundColor = theme.light;
+                    }
+                });
+                console.log('Added word cell highlighting');
+            }
+        }
+    });
+    
+    console.log('=== VISUAL INDICATORS UPDATE COMPLETE ===');
+}
+
+// Manual cleanup function for debugging
+function clearAllOtherUserHighlights() {
+    console.log('=== MANUAL CLEANUP ===');
+    
+    // Clear all other-user classes and styles
+    document.querySelectorAll('.other-user-indicator').forEach(el => {
+        console.log('Removing indicator:', el);
+        el.remove();
+    });
+    
+    document.querySelectorAll('.cell-container').forEach(container => {
+        if (container.classList.contains('other-user-active-cell') || 
+            container.classList.contains('other-user-word-highlight')) {
+            console.log('Cleaning container:', container.id);
+            container.classList.remove('other-user-active-cell', 'other-user-word-highlight');
+            container.style.removeProperty('background-color');
+            container.style.removeProperty('border-color');
+            container.style.removeProperty('border');
+        }
+    });
+    
+    document.querySelectorAll('.clue-item').forEach(item => {
+        if (item.classList.contains('other-user-clue')) {
+            console.log('Cleaning clue item:', item.dataset);
+            item.classList.remove('other-user-clue');
+            item.style.removeProperty('border-left-color');
+        }
+    });
+    
+    console.log('Manual cleanup complete');
+}
+
+// Expose cleanup function globally for debugging
+window.clearAllOtherUserHighlights = clearAllOtherUserHighlights;
+
+// Handle page unload to clean up presence
+window.addEventListener('beforeunload', () => {
+    console.log('Page unloading - sending disconnect signal');
+    // Send disconnect signal (fire and forget)
+    try {
+        fetch('/api/disconnect', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Client-ID': clientId
+            },
+            body: JSON.stringify({ clientId: clientId }),
+            keepalive: true
+        }).catch(() => {
+            // Ignore errors during disconnect
+        });
+    } catch (error) {
+        console.log('Disconnect failed:', error);
+    }
+});
+
+// Also handle page visibility changes
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        console.log('Tab hidden - sending disconnect signal');
+        fetch('/api/disconnect', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Client-ID': clientId
+            },
+            body: JSON.stringify({ clientId: clientId })
+        }).catch(() => {
+            // Ignore errors during disconnect
+        });
+    }
+});
 
 // Create crossword grid
 function createGrid() {
@@ -543,6 +933,23 @@ function processCellInput(cell, row, col) {
 function handleCellFocus(e) {
     currentCell = e.target;
     
+    const row = parseInt(e.target.dataset.row);
+    const col = parseInt(e.target.dataset.col);
+    
+    // Send enhanced presence update that includes both clue and cell info
+    const presenceData = { type: 'cell', row: row, col: col };
+    
+    // If we're actively working on a clue, include that info too
+    if (currentClueDirection && currentClueNumber && activeWordCells.length > 0) {
+        presenceData.activeClue = {
+            direction: currentClueDirection,
+            number: currentClueNumber
+        };
+        console.log('Sending combined presence: cell + clue', presenceData);
+    }
+    
+    sendPresenceUpdate(presenceData);
+    
     // Only implement reverse context-awareness if we're not currently editing a clue
     // AND if this focus wasn't triggered by our own focus management
     const isEditingClue = document.activeElement && 
@@ -551,8 +958,6 @@ function handleCellFocus(e) {
     
     if (!isEditingClue) {
         // Implement reverse context-awareness: grid cell -> clue
-        const row = parseInt(e.target.dataset.row);
-        const col = parseInt(e.target.dataset.col);
         handleGridToClueContext(row, col, false);
     }
 }
@@ -1789,6 +2194,9 @@ function highlightWord(direction, number) {
     wordCells.forEach(cell => {
         cell.container.classList.add('word-highlight');
     });
+    
+    // Send presence update for word highlighting
+    sendPresenceUpdate({ type: 'clue', direction: direction, number: number });
     
     // Show the active clue below the grid
     showActiveClue(direction, number);
