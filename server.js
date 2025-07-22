@@ -53,30 +53,18 @@ const server = http.createServer((req, res) => {
     
     // Clean up stale presence data before sending
     const now = Date.now();
-    console.log('=== SERVER PRESENCE CLEANUP ===');
-    console.log('Current time:', now);
-    console.log('Total presence entries before cleanup:', userPresence.size);
     
     const staleClients = [];
     for (const [clientId, data] of userPresence.entries()) {
       const age = now - data.lastSeen;
-      console.log(`Client ${clientId}: age=${age}ms, timeout=${CLIENT_TIMEOUT}ms`);
       if (age > CLIENT_TIMEOUT) {
         staleClients.push(clientId);
       }
     }
     
     staleClients.forEach(clientId => {
-      console.log('Removing stale presence data for client:', clientId);
       userPresence.delete(clientId);
     });
-    
-    console.log('Presence entries after cleanup:', userPresence.size);
-    console.log('Active presence data:', Array.from(userPresence.entries()).map(([id, data]) => ({
-      clientId: id,
-      position: data.position,
-      age: now - data.lastSeen
-    })));
     
     const response = {
       ...gameState,
@@ -190,10 +178,21 @@ const server = http.createServer((req, res) => {
     // Handle client disconnect
     const clientId = req.headers['x-client-id'];
     if (clientId) {
-      console.log('=== CLIENT DISCONNECT ===');
-      console.log('Removing client:', clientId);
       connectedClients.delete(clientId);
       userPresence.delete(clientId);
+      
+      // Broadcast disconnect to other clients
+      updates.push({
+        id: ++updateId,
+        type: 'presence-update',
+        timestamp: Date.now(),
+        data: {
+          type: 'presence-update',
+          clientId: clientId,
+          color: null,
+          position: null // Clear position on disconnect
+        }
+      });
       
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true }));
@@ -221,19 +220,18 @@ const server = http.createServer((req, res) => {
       try {
         const data = JSON.parse(body);
         
-        // Update user presence
-        console.log('=== UPDATING USER PRESENCE ===');
-        console.log('Client ID:', clientId);
-        console.log('Color:', data.color);
-        console.log('Position:', data.position);
-        
-        userPresence.set(clientId, {
-          color: data.color,
-          position: data.position,
-          lastSeen: Date.now()
-        });
-        
-        console.log('Total presence entries after update:', userPresence.size);
+        // Update or clear user presence
+        if (data.position === null) {
+          // Clear user presence when position is null
+          userPresence.delete(clientId);
+        } else {
+          // Update user presence
+          userPresence.set(clientId, {
+            color: data.color,
+            position: data.position,
+            lastSeen: Date.now()
+          });
+        }
         
         // Register client as active
         connectedClients.set(clientId, Date.now());
@@ -247,7 +245,7 @@ const server = http.createServer((req, res) => {
             type: 'presence-update',
             clientId: clientId,
             color: data.color,
-            position: data.position
+            position: data.position // This can be null to clear presence
           }
         });
         

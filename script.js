@@ -47,6 +47,9 @@ let lastFocusedCell = null;
 let lastFocusTime = 0;
 const DOUBLE_TAP_DELAY = 500; // milliseconds
 
+// Track if we're in the middle of arrow key navigation within a clue
+let isNavigatingWithinClue = false;
+
 // Auto-resize textarea function
 function autoResizeTextarea(textarea) {
     // Reset height to auto to get the correct scrollHeight
@@ -167,7 +170,7 @@ async function loadInitialState() {
         
         console.log('Loaded initial state:', gameState);
         
-        // Update grid
+        // Update grid - ensure complete state synchronization
         Object.keys(gameState.grid).forEach(key => {
             const [row, col] = key.split('-').map(Number);
             const container = document.getElementById(`container-${row}-${col}`);
@@ -184,6 +187,7 @@ async function loadInitialState() {
                 } else {
                     container.classList.remove('black');
                     cell.disabled = false;
+                    // Always sync both value and number fields
                     cell.value = cellData.value || '';
                     numberSpan.textContent = cellData.number || '';
                 }
@@ -225,19 +229,18 @@ async function checkForImmediateUpdates() {
         console.log('Checking for immediate updates:', updates);
         
         updates.forEach(update => {
-            console.log('=== IMMEDIATE UPDATE ===');
-            console.log('Update type:', update.type);
-            console.log('Update data:', update.data);
-            
             if (update.type === 'client-count') {
                 clientCountElement.textContent = update.clientCount;
             } else if (update.type === 'presence-update') {
-                console.log('Processing immediate presence update!');
                 handlePresenceUpdate(update.data);
-                lastUpdateId = Math.max(lastUpdateId, update.id);
-            } else {
+                if (update.id > 0) {
+                    lastUpdateId = Math.max(lastUpdateId, update.id);
+                }
+            } else if (update.data) {
                 handleServerUpdate(update.data);
-                lastUpdateId = Math.max(lastUpdateId, update.id);
+                if (update.id > 0) {
+                    lastUpdateId = Math.max(lastUpdateId, update.id);
+                }
             }
         });
         
@@ -256,19 +259,18 @@ function startPolling() {
             const updates = await response.json();
             
             updates.forEach(update => {
-                console.log('=== RECEIVED UPDATE ===');
-                console.log('Update type:', update.type);
-                console.log('Update data:', update.data);
-                
                 if (update.type === 'client-count') {
                     clientCountElement.textContent = update.clientCount;
                 } else if (update.type === 'presence-update') {
-                    console.log('Processing presence update!');
                     handlePresenceUpdate(update.data);
-                    lastUpdateId = Math.max(lastUpdateId, update.id);
-                } else {
+                    if (update.id > 0) { // Only update for real updates with valid IDs
+                        lastUpdateId = Math.max(lastUpdateId, update.id);
+                    }
+                } else if (update.data) {
                     handleServerUpdate(update.data);
-                    lastUpdateId = Math.max(lastUpdateId, update.id);
+                    if (update.id > 0) { // Only update for real updates with valid IDs
+                        lastUpdateId = Math.max(lastUpdateId, update.id);
+                    }
                 }
             });
             
@@ -343,14 +345,8 @@ async function sendToServer(data) {
 
 // Send user presence update to server
 async function sendPresenceUpdate(position) {
-    console.log('=== SENDING PRESENCE UPDATE ===');
-    console.log('Position:', position);
-    console.log('Client ID:', clientId);
-    console.log('User Color:', userColor);
-    
     // Don't spam the server with identical position updates
     if (JSON.stringify(position) === JSON.stringify(lastSentPosition)) {
-        console.log('Skipping identical position update');
         return;
     }
     
@@ -381,15 +377,12 @@ async function sendPresenceUpdate(position) {
 
 // Handle presence updates from other users
 function handlePresenceUpdate(data) {
-    console.log('Received presence update:', data);
-    
     // Don't process our own presence updates
     if (data.clientId === clientId) {
-        console.log('Ignoring own presence update');
         return;
     }
     
-    console.log('Processing presence update for other user:', data.clientId);
+    console.log(`Processing presence update for ${data.clientId}: position=${JSON.stringify(data.position)}`);
     
     // Update other users map
     if (data.position) {
@@ -397,31 +390,57 @@ function handlePresenceUpdate(data) {
             color: data.color,
             position: data.position
         });
-        console.log('Updated user position:', data.clientId, data.position);
+        console.log(`Added user ${data.clientId} at position`, data.position);
     } else {
         // User disconnected or cleared position
         otherUsers.delete(data.clientId);
-        console.log('Removed user:', data.clientId);
+        console.log(`Removed user ${data.clientId} from otherUsers map`);
     }
+    
+    console.log(`Total users in otherUsers map: ${otherUsers.size}`);
     
     // Update visual indicators
     updateOtherUsersDisplay();
 }
 
+// Clear all other user visual indicators
+function clearAllOtherUserIndicators() {
+    // Remove all other-user indicators
+    document.querySelectorAll('.other-user-indicator').forEach(el => el.remove());
+    
+    // Clear ALL styling from ALL containers - be more aggressive
+    document.querySelectorAll('.cell-container').forEach(el => {
+        el.classList.remove('other-user-active-cell', 'other-user-word-highlight');
+        // Clear ALL background colors that might be set by other users
+        if (el.style.backgroundColor && !el.classList.contains('black')) {
+            el.style.removeProperty('background-color');
+        }
+        // Clear all other-user CSS custom properties
+        el.style.removeProperty('--other-user-color');
+        el.style.removeProperty('--other-user-light');
+        el.style.removeProperty('--other-user-border');
+    });
+    
+    document.querySelectorAll('.clue-item').forEach(el => {
+        el.classList.remove('other-user-clue');
+        el.style.removeProperty('border-left-color');
+        el.style.removeProperty('--other-user-color');
+        el.style.removeProperty('--other-user-light');
+        el.style.removeProperty('--other-user-border');
+    });
+}
+
 // Update initial user presence from server state
 function updateUserPresence(presenceArray) {
-    console.log('=== INITIAL PRESENCE DATA ===');
-    console.log('Presence array:', presenceArray);
-    console.log('Our client ID:', clientId);
-    
-    // Clear existing data
+    // Clear existing data completely
     otherUsers.clear();
+    
+    // First, clear all existing visual indicators to prevent stale highlights
+    clearAllOtherUserIndicators();
     
     // Populate with current presence data
     presenceArray.forEach(user => {
-        console.log('Processing user:', user.clientId, 'vs our ID:', clientId);
-        if (user.clientId !== clientId && user.position) {
-            console.log('Adding other user:', user.clientId, user.position);
+        if (user.clientId !== clientId && user.position && user.color) {
             otherUsers.set(user.clientId, {
                 color: user.color,
                 position: user.position
@@ -435,110 +454,47 @@ function updateUserPresence(presenceArray) {
 
 // Update visual indicators for other users
 function updateOtherUsersDisplay() {
-    console.log('=== UPDATING VISUAL INDICATORS ===');
-    console.log('Active users:', otherUsers.size);
-    console.log('User data:', Array.from(otherUsers.entries()));
+    console.log(`updateOtherUsersDisplay called with ${otherUsers.size} users`);
     
-    // Clear all existing other-user indicators with detailed logging
-    const indicators = document.querySelectorAll('.other-user-indicator');
-    const activeCells = document.querySelectorAll('.cell-container.other-user-active-cell');
-    const wordHighlights = document.querySelectorAll('.cell-container.other-user-word-highlight');
-    const clueHighlights = document.querySelectorAll('.clue-item.other-user-clue');
-    
-    // Also check for any containers that might have stale styling
-    const allContainers = document.querySelectorAll('.cell-container');
-    const allClueItems = document.querySelectorAll('.clue-item');
-    
-    console.log('Cleaning up:', {
-        indicators: indicators.length,
-        activeCells: activeCells.length, 
-        wordHighlights: wordHighlights.length,
-        clueHighlights: clueHighlights.length
-    });
-    
-    indicators.forEach(el => el.remove());
-    activeCells.forEach(container => {
-        container.classList.remove('other-user-active-cell');
-        container.style.removeProperty('background-color');
-        container.style.removeProperty('border-color');
-        container.style.removeProperty('border');
-    });
-    wordHighlights.forEach(container => {
-        container.classList.remove('other-user-word-highlight');
-        container.style.removeProperty('background-color');
-        container.style.removeProperty('border-color');
-        container.style.removeProperty('border');
-    });
-    clueHighlights.forEach(item => {
-        item.classList.remove('other-user-clue');
-        item.style.removeProperty('border-left-color');
-        item.style.removeProperty('border-color');
-        item.style.removeProperty('border');
-    });
-    
-    // Additional comprehensive cleanup for any stale styling
-    allContainers.forEach(container => {
-        if (container.classList.contains('other-user-active-cell') || 
-            container.classList.contains('other-user-word-highlight')) {
-            container.classList.remove('other-user-active-cell', 'other-user-word-highlight');
-            container.style.removeProperty('background-color');
-            container.style.removeProperty('border-color');
-            container.style.removeProperty('border');
-        }
-    });
-    
-    allClueItems.forEach(item => {
-        if (item.classList.contains('other-user-clue')) {
-            item.classList.remove('other-user-clue');
-            item.style.removeProperty('border-left-color');
-            item.style.removeProperty('border-color');
-            item.style.removeProperty('border');
-        }
-    });
-    
-    console.log('Comprehensive cleanup complete. Now adding new indicators...');
+    // Clear all existing other-user indicators
+    clearAllOtherUserIndicators();
     
     // Add indicators for each active user
     otherUsers.forEach((userData, userId) => {
+        console.log(`Adding visual indicator for user ${userId}:`, userData);
         const { color, position } = userData;
         const theme = colorThemes[color];
-        
-        console.log(`Adding indicator for user ${userId} at`, position, 'with color', color);
         
         if (position.type === 'cell') {
             // Show active cell with darker background
             const container = document.getElementById(`container-${position.row}-${position.col}`);
-            console.log('Found container for cell:', container);
             if (container) {
                 container.classList.add('other-user-active-cell');
-                // Use a darker shade of the user's color for the active cell
-                const darkShade = adjustColorBrightness(theme.light, -30);
-                container.style.backgroundColor = darkShade;
-                console.log('Added active cell highlighting with color:', darkShade);
+                // Use CSS custom properties for dynamic theming
+                container.style.setProperty('--other-user-color', theme.primary);
+                container.style.setProperty('--other-user-light', theme.light);
+                container.style.setProperty('--other-user-border', theme.border);
+                container.style.backgroundColor = adjustColorBrightness(theme.light, -20);
             }
             
-            // If this cell position also includes clue info, highlight the word
-            if (position.activeClue) {
-                console.log('Also highlighting word for clue:', position.activeClue);
-                const wordStart = findWordStart(position.activeClue.number);
-                if (wordStart) {
-                    const wordCells = findWordCells(wordStart.row, wordStart.col, position.activeClue.direction);
-                    console.log('Found word cells for highlighting:', wordCells.length);
-                    
-                    wordCells.forEach(cell => {
-                        if (cell.container && cell.container !== container) {
-                            cell.container.classList.add('other-user-word-highlight');
-                            cell.container.style.backgroundColor = theme.light;
-                        }
-                    });
-                }
+            // If this position includes word context, highlight the entire word
+            if (position.activeClue && position.activeClue.wordCells) {
+                position.activeClue.wordCells.forEach(cellData => {
+                    const wordContainer = document.getElementById(`container-${cellData.row}-${cellData.col}`);
+                    if (wordContainer && wordContainer !== container) { // Don't double-highlight the active cell
+                        wordContainer.classList.add('other-user-word-highlight');
+                        wordContainer.style.setProperty('--other-user-light', theme.light);
+                        wordContainer.style.backgroundColor = theme.light;
+                    }
+                });
             }
+            
         } else if (position.type === 'clue') {
             // Show indicator on clue
             const clueItem = document.querySelector(`[data-direction="${position.direction}"][data-number="${position.number}"]`);
-            console.log('Found clue item:', clueItem);
             if (clueItem) {
                 clueItem.classList.add('other-user-clue');
+                clueItem.style.setProperty('--other-user-color', theme.primary);
                 clueItem.style.borderLeftColor = theme.primary;
                 
                 // Add small colored dot indicator
@@ -546,39 +502,34 @@ function updateOtherUsersDisplay() {
                 indicator.className = 'other-user-indicator';
                 indicator.style.cssText = `
                     position: absolute;
-                    top: 8px;
                     right: 8px;
+                    top: 50%;
+                    transform: translateY(-50%);
                     width: 8px;
                     height: 8px;
-                    background-color: ${theme.primary};
                     border-radius: 50%;
+                    background-color: ${theme.primary};
                     z-index: 10;
                     pointer-events: none;
                 `;
                 clueItem.style.position = 'relative';
                 clueItem.appendChild(indicator);
-                console.log('Added clue indicator');
             }
             
             // Also highlight the word cells for this clue
             const wordStart = findWordStart(position.number);
-            console.log('Finding word start for clue', position.number, ':', wordStart);
             if (wordStart) {
                 const wordCells = findWordCells(wordStart.row, wordStart.col, position.direction);
-                console.log('Found word cells:', wordCells.length);
-                
                 wordCells.forEach(cell => {
                     if (cell.container) {
                         cell.container.classList.add('other-user-word-highlight');
+                        cell.container.style.setProperty('--other-user-light', theme.light);
                         cell.container.style.backgroundColor = theme.light;
                     }
                 });
-                console.log('Added word cell highlighting');
             }
         }
     });
-    
-    console.log('=== VISUAL INDICATORS UPDATE COMPLETE ===');
 }
 
 // Manual cleanup function for debugging
@@ -699,6 +650,7 @@ function createGrid() {
             // Add event listeners
             cell.addEventListener('input', handleCellInput);
             cell.addEventListener('focus', handleCellFocus);
+            cell.addEventListener('blur', handleCellBlur);
             cell.addEventListener('click', handleCellTap);
             cell.addEventListener('keydown', handleKeyDown);
             cell.addEventListener('keyup', handleCellKeyUp);
@@ -936,30 +888,209 @@ function handleCellFocus(e) {
     const row = parseInt(e.target.dataset.row);
     const col = parseInt(e.target.dataset.col);
     
+    // ALWAYS find and highlight a clue for this cell (unless navigating within current clue)
+    if (!isNavigatingWithinClue) {
+        ensureClueHighlightForCell(row, col);
+    }
+    
     // Send enhanced presence update that includes both clue and cell info
     const presenceData = { type: 'cell', row: row, col: col };
     
-    // If we're actively working on a clue, include that info too
-    if (currentClueDirection && currentClueNumber && activeWordCells.length > 0) {
+    // Always include word context info if we have an active word
+    if (currentClueDirection && activeWordCells.length > 0) {
         presenceData.activeClue = {
             direction: currentClueDirection,
-            number: currentClueNumber
+            number: currentClueNumber, // This can be null for boundary highlighting
+            wordCells: activeWordCells.map(cell => ({ row: cell.row, col: cell.col }))
         };
-        console.log('Sending combined presence: cell + clue', presenceData);
     }
     
     sendPresenceUpdate(presenceData);
+}
+
+// Ensure a clue is always highlighted for the given cell
+function ensureClueHighlightForCell(row, col) {
+    // Skip if in setup mode
+    if (isSetupMode) return;
     
-    // Only implement reverse context-awareness if we're not currently editing a clue
-    // AND if this focus wasn't triggered by our own focus management
-    const isEditingClue = document.activeElement && 
-          (document.activeElement.classList.contains('clue-input') || 
-           document.activeElement.classList.contains('clue-number-input'));
+    // Find clues that intersect this cell
+    const { acrossClue, downClue } = findIntersectingClues(row, col);
+    console.log(`Cell ${row},${col} - found across: ${acrossClue?.number}, down: ${downClue?.number}`);
     
-    if (!isEditingClue) {
-        // Implement reverse context-awareness: grid cell -> clue
-        handleGridToClueContext(row, col, false);
+    // Priority logic for which clue to highlight:
+    // 1. If we're already in a clue that contains this cell, keep that clue
+    // 2. If only one clue exists, use it
+    // 3. If both exist, prefer across by default (standard crossword convention)
+    
+    let targetClue = null;
+    
+    // Check if current clue still contains this cell
+    if (currentClueDirection && currentClueNumber) {
+        const currentClueContainsCell = (currentClueDirection === 'across' && acrossClue?.number === currentClueNumber) ||
+                                       (currentClueDirection === 'down' && downClue?.number === currentClueNumber);
+        if (currentClueContainsCell) {
+            // Stay with current clue
+            targetClue = { direction: currentClueDirection, number: currentClueNumber };
+        }
     }
+    
+    // If no current clue or current clue doesn't contain this cell, pick new one
+    if (!targetClue) {
+        if (acrossClue && downClue) {
+            // Both exist, prefer across
+            targetClue = { direction: 'across', number: acrossClue.number };
+        } else if (acrossClue) {
+            targetClue = { direction: 'across', number: acrossClue.number };
+        } else if (downClue) {
+            targetClue = { direction: 'down', number: downClue.number };
+        }
+    }
+    
+    // Highlight the chosen clue
+    if (targetClue) {
+        console.log(`Highlighting clue ${targetClue.direction} ${targetClue.number} for cell ${row},${col}`);
+        highlightWord(targetClue.direction, targetClue.number);
+    } else {
+        console.log(`No clue found for cell ${row},${col} - falling back to word boundary highlighting`);
+        // Fallback: highlight the longest word containing this cell
+        highlightWordBoundaries(row, col);
+    }
+}
+
+// Find clues that intersect with a given cell
+function findIntersectingClues(row, col) {
+    let acrossClue = null;
+    let downClue = null;
+    
+    // Find across clue - search left to find the start
+    for (let c = col; c >= 0; c--) {
+        const container = document.getElementById(`container-${row}-${c}`);
+        if (!container || container.classList.contains('black')) break;
+        
+        const numSpan = document.getElementById(`number-${row}-${c}`);
+        if (numSpan && numSpan.textContent) {
+            // Check if this number has an across clue
+            const clueItem = document.querySelector(`[data-direction="across"][data-number="${numSpan.textContent}"]`);
+            if (clueItem) {
+                acrossClue = { number: numSpan.textContent, startRow: row, startCol: c };
+                break;
+            }
+        }
+    }
+    
+    // Find down clue - search up to find the start
+    for (let r = row; r >= 0; r--) {
+        const container = document.getElementById(`container-${r}-${col}`);
+        if (!container || container.classList.contains('black')) break;
+        
+        const numSpan = document.getElementById(`number-${r}-${col}`);
+        if (numSpan && numSpan.textContent) {
+            // Check if this number has a down clue
+            const clueItem = document.querySelector(`[data-direction="down"][data-number="${numSpan.textContent}"]`);
+            if (clueItem) {
+                downClue = { number: numSpan.textContent, startRow: r, startCol: col };
+                break;
+            }
+        }
+    }
+    
+    return { acrossClue, downClue };
+}
+
+// Fallback highlighting based on word boundaries (no clues needed)
+function highlightWordBoundaries(row, col) {
+    // Clear previous highlighting
+    clearWordHighlight();
+    
+    // Find across word
+    const acrossWord = findWordBoundary(row, col, 'across');
+    const downWord = findWordBoundary(row, col, 'down');
+    
+    // Choose the longer word, or across if equal
+    let chosenWord = acrossWord;
+    if (downWord && (!acrossWord || downWord.cells.length > acrossWord.cells.length)) {
+        chosenWord = downWord;
+    }
+    
+    if (chosenWord && chosenWord.cells.length > 1) {
+        // Set global state
+        activeWordCells = chosenWord.cells;
+        currentClueDirection = chosenWord.direction;
+        currentClueNumber = null; // No clue number for boundary highlighting
+        
+        // Highlight all cells in the word
+        chosenWord.cells.forEach(cellData => {
+            const container = document.getElementById(`container-${cellData.row}-${cellData.col}`);
+            if (container) {
+                container.classList.add('word-highlight');
+            }
+        });
+        
+        console.log(`Highlighted ${chosenWord.direction} word boundary with ${chosenWord.cells.length} cells`);
+    }
+}
+
+// Find word boundary in a given direction
+function findWordBoundary(row, col, direction) {
+    const cells = [];
+    
+    if (direction === 'across') {
+        // Find the start of the across word
+        let startCol = col;
+        while (startCol > 0) {
+            const container = document.getElementById(`container-${row}-${startCol - 1}`);
+            if (!container || container.classList.contains('black')) break;
+            startCol--;
+        }
+        
+        // Collect all cells from start to end
+        for (let c = startCol; c < GRID_SIZE; c++) {
+            const container = document.getElementById(`container-${row}-${c}`);
+            if (!container || container.classList.contains('black')) break;
+            cells.push({ row, col: c, container });
+        }
+    } else if (direction === 'down') {
+        // Find the start of the down word
+        let startRow = row;
+        while (startRow > 0) {
+            const container = document.getElementById(`container-${startRow - 1}-${col}`);
+            if (!container || container.classList.contains('black')) break;
+            startRow--;
+        }
+        
+        // Collect all cells from start to end
+        for (let r = startRow; r < GRID_SIZE; r++) {
+            const container = document.getElementById(`container-${r}-${col}`);
+            if (!container || container.classList.contains('black')) break;
+            cells.push({ row: r, col, container });
+        }
+    }
+    
+    return cells.length > 1 ? { direction, cells } : null;
+}
+
+// Handle cell blur - clear presence when user leaves a cell
+function handleCellBlur(e) {
+    // Use setTimeout to allow other focus events to fire first
+    setTimeout(() => {
+        const activeElement = document.activeElement;
+        
+        // Only clear presence if focus moved completely away from grid and clues
+        const isStillInGrid = activeElement && activeElement.classList.contains('grid-cell');
+        const isStillInClues = activeElement && (
+            activeElement.classList.contains('clue-input') ||
+            activeElement.classList.contains('clue-number-input')
+        );
+        
+        if (!isStillInGrid && !isStillInClues) {
+            // Clear current user position and send update
+            currentUserPosition = null;
+            sendPresenceUpdate(null);
+            
+            // Clear word highlighting
+            clearWordHighlight();
+        }
+    }, 100); // Small delay to allow focus to settle
 }
 
 // Handle cell tap/click for double-tap detection
@@ -999,19 +1130,39 @@ function handleKeyDown(e) {
     switch(e.key) {
         case 'ArrowUp':
             e.preventDefault();
-            moveTo(row - 1, col);
+            // If we're in a down clue, move within it, otherwise just move up
+            if (currentClueDirection === 'down' && currentClueNumber) {
+                moveWithinClue(row, col, 'up');
+            } else {
+                moveTo(row - 1, col);
+            }
             break;
         case 'ArrowDown':
             e.preventDefault();
-            moveTo(row + 1, col);
+            // If we're in a down clue, move within it, otherwise just move down  
+            if (currentClueDirection === 'down' && currentClueNumber) {
+                moveWithinClue(row, col, 'down');
+            } else {
+                moveTo(row + 1, col);
+            }
             break;
         case 'ArrowLeft':
             e.preventDefault();
-            moveTo(row, col - 1);
+            // If we're in an across clue, move within it, otherwise just move left
+            if (currentClueDirection === 'across' && currentClueNumber) {
+                moveWithinClue(row, col, 'left');
+            } else {
+                moveTo(row, col - 1);
+            }
             break;
         case 'ArrowRight':
             e.preventDefault();
-            moveTo(row, col + 1);
+            // If we're in an across clue, move within it, otherwise just move right
+            if (currentClueDirection === 'across' && currentClueNumber) {
+                moveWithinClue(row, col, 'right');
+            } else {
+                moveTo(row, col + 1);
+            }
             break;
         case 'Backspace':
             e.preventDefault();
@@ -1253,6 +1404,66 @@ function moveTo(row, col) {
         if (container && cell && !container.classList.contains('black')) {
             cell.focus();
         }
+    }
+}
+
+// Move within the current clue while maintaining highlighting
+function moveWithinClue(currentRow, currentCol, direction) {
+    if (!currentClueDirection || !currentClueNumber) {
+        // Fallback to regular movement if no clue context
+        switch(direction) {
+            case 'up': moveTo(currentRow - 1, currentCol); break;
+            case 'down': moveTo(currentRow + 1, currentCol); break;
+            case 'left': moveTo(currentRow, currentCol - 1); break;
+            case 'right': moveTo(currentRow, currentCol + 1); break;
+        }
+        return;
+    }
+    
+    // Find the current word cells
+    const wordStart = findWordStart(currentClueNumber);
+    if (!wordStart) return;
+    
+    const wordCells = findWordCells(wordStart.row, wordStart.col, currentClueDirection);
+    const currentIndex = wordCells.findIndex(cell => cell.row === currentRow && cell.col === currentCol);
+    
+    if (currentIndex === -1) return;
+    
+    let nextIndex = currentIndex;
+    
+    // Calculate next position within the clue
+    if ((direction === 'right' && currentClueDirection === 'across') || 
+        (direction === 'down' && currentClueDirection === 'down')) {
+        nextIndex = Math.min(currentIndex + 1, wordCells.length - 1);
+    } else if ((direction === 'left' && currentClueDirection === 'across') || 
+               (direction === 'up' && currentClueDirection === 'down')) {
+        nextIndex = Math.max(currentIndex - 1, 0);
+    } else {
+        // Direction doesn't match clue direction, fall back to regular movement
+        switch(direction) {
+            case 'up': moveTo(currentRow - 1, currentCol); break;
+            case 'down': moveTo(currentRow + 1, currentCol); break;
+            case 'left': moveTo(currentRow, currentCol - 1); break;
+            case 'right': moveTo(currentRow, currentCol + 1); break;
+        }
+        return;
+    }
+    
+    // Only move if we're actually changing position
+    if (nextIndex !== currentIndex) {
+        // Set flag to prevent context switching during navigation
+        isNavigatingWithinClue = true;
+        
+        // Move to the next cell in the clue
+        const nextCell = wordCells[nextIndex];
+        if (nextCell) {
+            moveTo(nextCell.row, nextCell.col);
+        }
+        
+        // Clear the flag after a short delay to allow focus to settle
+        setTimeout(() => {
+            isNavigatingWithinClue = false;
+        }, 100);
     }
 }
 
@@ -2403,6 +2614,32 @@ function handleClueTyping(character) {
         console.log(`Filled cell ${cellInfo.row},${cellInfo.col} with '${upperChar}', position now ${clueTypingPosition}`);
     }
 }
+
+// Handle page unload - disconnect from server
+window.addEventListener('beforeunload', () => {
+    // Send disconnect request synchronously
+    try {
+        fetch('/api/disconnect', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Client-ID': clientId
+            },
+            body: JSON.stringify({}),
+            keepalive: true // Ensure request completes even if page is unloading
+        }).catch(() => {}); // Ignore errors during unload
+    } catch (e) {
+        // Fallback for browsers that don't support keepalive
+    }
+});
+
+// Handle visibility change - clear presence when tab becomes hidden
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        // Clear presence when tab becomes hidden
+        sendPresenceUpdate(null);
+    }
+});
 
 // Initialize the grid when page loads
 document.addEventListener('DOMContentLoaded', () => {
